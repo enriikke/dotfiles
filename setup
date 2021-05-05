@@ -1,0 +1,12 @@
+#!/bin/sh
+
+apt-get update
+apt-get install -y zsh
+chsh -s $(which zsh)
+
+apt-get install ripgrep
+apt-get install fzf
+
+curl -L git.io/antigen > ~/antigen.zsh
+cp ~/dotfiles/.zshrc > ~/.zshrc
+cp ~/dotfiles/.antigenrc > ~/.antigenrc
