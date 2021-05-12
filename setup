@@ -12,5 +12,5 @@ cp ./.zshrc ~/.zshrc
 cp ./.antigenrc ~/.antigenrc
 
 npm install -g typewritten
-sudo ln -sf /home/codespace/.npm-global/lib/node_modules/typewritten/typewritten.zsh /usr/local/share/zsh/site-functions/prompt_typewritten_setup
-sudo ln -sf /home/codespace/.npm-global/lib/node_modules/typewritten/async.zsh /usr/local/share/zsh/site-functions/async
+sudo ln -sf /usr/local/lib/node_modules/typewritten/typewritten.zsh /usr/local/share/zsh/site-functions/prompt_typewritten_setup
+sudo ln -sf /usr/local/lib/node_modules/typewritten/async.zsh /usr/local/share/zsh/site-functions/async
