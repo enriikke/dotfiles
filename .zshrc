@@ -17,5 +17,5 @@ alias ll='ls -GFhl'
 alias la='ls -GFhla'
 
 # setup antigen
-source ~/.zsh/antigen.zsh
-antigen init ~/.zsh/.antigenrc
+source ~/antigen.zsh
+antigen init ~/.antigenrc
