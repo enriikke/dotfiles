@@ -10,10 +10,5 @@ sudo apt-get install fzf
 curl -L git.io/antigen > ~/antigen.zsh
 cp ./.zshrc ~/.zshrc
 cp ./.antigenrc ~/.antigenrc
-source ~/.zshrc
-
-npm install -g typewritten
-sudo ln -sf /usr/local/lib/node_modules/typewritten/typewritten.zsh /usr/local/share/zsh/site-functions/prompt_typewritten_setup
-sudo ln -sf /usr/local/lib/node_modules/typewritten/async.zsh /usr/local/share/zsh/site-functions/async
 
 source ~/.zshrc
