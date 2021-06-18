@@ -7,10 +7,11 @@ sudo chsh -s $(which zsh)
 sudo apt-get install ripgrep
 sudo apt-get install fzf
 
-curl -sfL git.io/antibody | sh -s - -b /usr/local/bin
-
 mkdir -p ~/.zsh
-cp ./zsh/plugins ~/.zsh/plugins
+curl -L git.io/antigen > ~/.zsh/antigen.zsh
+git clone https://github.com/reobin/typewritten.git ~/.zsh/typewritten
+
 cp ./.zshrc ~/.zshrc
+cp ./.antigenrc ~/.zsh/.antigenrc
 
 source ~/.zshrc
