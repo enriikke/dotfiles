@@ -16,10 +16,6 @@ alias ls='ls -GFh'
 alias ll='ls -GFhl'
 alias la='ls -GFhla'
 
-# setup antigen
-source ~/antigen.zsh
-antigen init ~/.antigenrc
-
-# Set typewritten ZSH as a prompt
-autoload -U promptinit; promptinit
-prompt typewritten
+# setup antibody
+source <(antibody init)
+antibody bundle < ~/.zsh/plugins
