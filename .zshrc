@@ -18,7 +18,7 @@ alias la='ls -GFhla'
 
 # setup antigen
 source ~/.zsh/antigen.zsh
-antigen init ~/.antigenrc
+antigen init ~/.zsh/.antigenrc
 
 # Set typewritten ZSH as a prompt
 # fpath+=$HOME/.zsh/typewritten
