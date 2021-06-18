@@ -9,7 +9,7 @@ sudo apt-get install fzf
 
 mkdir -p ~/.zsh
 curl -L git.io/antigen > ~/.zsh/antigen.zsh
-git clone https://github.com/reobin/typewritten.git ~/.zsh/typewritten
+# git clone https://github.com/reobin/typewritten.git ~/.zsh/typewritten
 
 cp ./.zshrc ~/.zshrc
 cp ./.antigenrc ~/.zsh/.antigenrc
