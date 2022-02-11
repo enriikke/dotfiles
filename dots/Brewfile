@@ -1,5 +1,6 @@
 # shell
 brew "ctags"
+brew "fzf"
 brew "gh"
 brew "git"
 brew "httpie"
@@ -24,3 +25,7 @@ cask "spotify"
 cask "todoist"
 cask "visual-studio-code"
 cask "zoom"
+
+# fonts
+# tap "homebrew/cask-fonts"
+# brew "font-fira-code"

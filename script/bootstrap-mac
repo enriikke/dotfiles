@@ -1,0 +1,15 @@
+#!/bin/sh
+
+if ! command -v brew >/dev/null; then
+  # installing homebrew
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+  # make sure homebrew is in the path to continue
+  export PATH="/usr/local/bin:$PATH"
+else
+  # updating homebrew
+  brew update
+fi
+
+# installing dependencies
+brew bundle --file ../dots/Brewfile
