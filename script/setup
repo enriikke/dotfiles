@@ -11,14 +11,25 @@ else
   source ./bootstrap-codespace
 fi
 
+# where am i?
+if [ -L "$0" ]; then
+  DIR=$(dirname $(readlink -f $0))
+else
+  DIR=$(dirname $0)
+fi
+
+pushd $DIR/..
+ROOT_DIR=$(pwd)
+popd
+
 # copy dotfiles
 mkdir -p ~/.config
-ln -sfv ../dots/nvim ~/.config/nvim
-ln -sfv ../dots/zsh ~/.config/zsh
-ln -sfv ../dots/.gitconfig ~/.gitconfig
-ln -sfv ../dots/.gitignore ~/.gitignore
-ln -sfv ../dots/.tmux.conf ~/.tmux.conf
-ln -sfv ../dots/.zshrc ~/.zshrc
+ln -sfv $ROOT_DIR/dots/nvim ~/.config/nvim
+ln -sfv $ROOT_DIR/dots/zsh ~/.config/zsh
+ln -sfv $ROOT_DIR/dots/.gitconfig ~/.gitconfig
+ln -sfv $ROOT_DIR/dots/.gitignore ~/.gitignore
+ln -sfv $ROOT_DIR/dots/.tmux.conf ~/.tmux.conf
+ln -sfv $ROOT_DIR/dots/.zshrc ~/.zshrc
 
 # install antibody (zsh plugin manager)
 # https://getantibody.github.io
