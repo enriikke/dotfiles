@@ -1,0 +1,19 @@
+#!/bin/sh
+
+# updating apt-get
+apt-get update
+
+# installing dependencies
+apt-get install -y ctags
+apt-get install -y fzf
+apt-get install -y gh
+apt-get install -y git
+apt-get install -y httpie
+apt-get install -y imagemagick
+apt-get install -y jq
+apt-get install -y neovim
+apt-get install -y ripgrep
+apt-get install -y tmux
+apt-get install -y tree
+apt-get install -y wget
+apt-get install -y zsh

@@ -1,0 +1,31 @@
+# shell
+brew "ctags"
+brew "fzf"
+brew "gh"
+brew "git"
+brew "httpie"
+brew "imagemagick"
+brew "jq"
+brew "neovim"
+brew "ripgrep"
+brew "tmux"
+brew "tree"
+brew "wget"
+brew "zsh"
+
+# apps
+cask "1password"
+cast "1password-cli"
+cask "brave-browser"
+cask "encryptme"
+cask "iterm2"
+cask "ngrok"
+cask "slack"
+cask "spotify"
+cask "todoist"
+cask "visual-studio-code"
+cask "zoom"
+
+# fonts
+# tap "homebrew/cask-fonts"
+# brew "font-fira-code"
