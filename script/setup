@@ -3,13 +3,6 @@
 # ask for the administrator password upfront and keep `sudo` session alive
 # sudo -s
 
-# are we on a mac or GH codespace? bootstrap!
-if [ $(uname -s) = "Darwin" ]; then
-  source ./bootstrap-mac
-else
-  source ./bootstrap-codespace
-fi
-
 # where am i?
 if [ -L "$0" ]; then
   DIR=$(dirname $(readlink -f $0))
@@ -20,6 +13,13 @@ fi
 pushd $DIR/..
 ROOT_DIR=$(pwd)
 popd
+
+# are we on a mac or GH codespace? bootstrap!
+if [ $(uname -s) = "Darwin" ]; then
+  $ROOT_DIR/script/bootstrap-mac
+else
+  $ROOT_DIR/script/bootstrap-codespace
+fi
 
 # copy dotfiles
 mkdir -p ~/.config
