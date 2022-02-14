@@ -10,25 +10,26 @@ else
   DIR=$(dirname $0)
 fi
 
-pushd $DIR/..
-ROOT_DIR=$(pwd)
-popd
+WD=$(pwd)
+cd $DIR/..
+ROOT=$(pwd)
+cd $WD
 
 # are we on a mac or GH codespace? bootstrap!
 if [ $(uname -s) = "Darwin" ]; then
-  $ROOT_DIR/script/bootstrap-mac
+  sh $ROOT/script/bootstrap-mac
 else
-  $ROOT_DIR/script/bootstrap-codespace
+  sh $ROOT/script/bootstrap-codespace
 fi
 
 # copy dotfiles
 mkdir -p ~/.config
-ln -sfv $ROOT_DIR/dots/nvim ~/.config/nvim
-ln -sfv $ROOT_DIR/dots/zsh ~/.config/zsh
-ln -sfv $ROOT_DIR/dots/.gitconfig ~/.gitconfig
-ln -sfv $ROOT_DIR/dots/.gitignore ~/.gitignore
-ln -sfv $ROOT_DIR/dots/.tmux.conf ~/.tmux.conf
-ln -sfv $ROOT_DIR/dots/.zshrc ~/.zshrc
+ln -sfv $ROOT/dots/nvim ~/.config/nvim
+ln -sfv $ROOT/dots/zsh ~/.config/zsh
+ln -sfv $ROOT/dots/.gitconfig ~/.gitconfig
+ln -sfv $ROOT/dots/.gitignore ~/.gitignore
+ln -sfv $ROOT/dots/.tmux.conf ~/.tmux.conf
+ln -sfv $ROOT/dots/.zshrc ~/.zshrc
 
 # install antibody (zsh plugin manager)
 # https://getantibody.github.io
@@ -40,9 +41,19 @@ sudo sh -c 'curl -fLo "${XDG_DATA_HOME:-$HOME/.local/share}"/nvim/site/autoload/
        https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim'
 
 # change default shell to zsh
-if [[ "$SHELL" != $(which zsh) ]]; then
+if [ "$SHELL" != $(which zsh) ]; then
   sudo chsh -s $(which zsh)
 fi
 
 # load zsh and install plugins
-source ~/.zshrc
+# source ~/.zshrc
+
+# done
+if [ -n $CODESPACES ]; then
+  # send notification that dotfiles setup has completed
+  curl --silent \
+    --form-string "token=$PUSHOVER_API_TOKEN" \
+    --form-string "user=$PUSHOVER_USER_KEY" \
+    --form-string "message=🎉 Codespace $CODESPACE_NAME is ready! ✨" \
+    https://api.pushover.net/1/messages.json
+fi
