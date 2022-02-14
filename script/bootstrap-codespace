@@ -1,19 +1,19 @@
 #!/bin/sh
 
 # updating apt-get
-apt-get update
+sudo apt-get update
 
 # installing dependencies
-apt-get install -y ctags
-apt-get install -y fzf
-apt-get install -y gh
-apt-get install -y git
-apt-get install -y httpie
-apt-get install -y imagemagick
-apt-get install -y jq
-apt-get install -y neovim
-apt-get install -y ripgrep
-apt-get install -y tmux
-apt-get install -y tree
-apt-get install -y wget
-apt-get install -y zsh
+sudo apt-get install -y ctags
+sudo apt-get install -y fzf
+sudo apt-get install -y gh
+sudo apt-get install -y git
+sudo apt-get install -y httpie
+sudo apt-get install -y imagemagick
+sudo apt-get install -y jq
+sudo apt-get install -y neovim
+sudo apt-get install -y ripgrep
+sudo apt-get install -y tmux
+sudo apt-get install -y tree
+sudo apt-get install -y wget
+sudo apt-get install -y zsh
