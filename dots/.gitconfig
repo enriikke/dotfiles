@@ -1,8 +1,19 @@
 [user]
   name = Enrique Gonzalez
   email = "enriikke@gmail.com"
-
+[github]
+  user = enriikke
 [core]
   # Use custom `.gitignore` and `.gitattributes`
   excludesfile = ~/.gitignore
   attributesfile = ~/.gitattributes
+[push]
+  default = simple
+[commit]
+  gpgsign = true
+[tag]
+  gpgsign = true
+[apply]
+  whitespace = fix
+[help]
+  autocorrect = 1
