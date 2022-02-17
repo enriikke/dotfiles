@@ -51,9 +51,7 @@ fi
 # done
 if [ -n $CODESPACES ]; then
   # git hooks magic
-  if [ -f $CODESPACE_VSCODE_FOLDER/script/git-hooks/pre-push ]; then
-    ln -s $CODESPACE_VSCODE_FOLDER/script/git-hooks/pre-push $CODESPACE_VSCODE_FOLDER/.git/hooks/pre-push
-  fi
+  [ -f /workspaces/github/script/git-hooks/pre-push ] && ln -s /workspaces/github/script/git-hooks/pre-push /workspaces/github/.git/hooks/pre-push
 
   # send notification that dotfiles setup has completed
   curl --silent \
