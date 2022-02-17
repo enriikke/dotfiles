@@ -7,6 +7,7 @@
   # Use custom `.gitignore` and `.gitattributes`
   excludesfile = ~/.gitignore
   attributesfile = ~/.gitattributes
+  editor = code --wait
 [push]
   default = simple
 [commit]
