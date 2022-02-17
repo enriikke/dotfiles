@@ -51,7 +51,7 @@ fi
 # done
 if [ -n $CODESPACES ]; then
   # git hooks magic
-  [ -f $PWD/script/git-hooks/pre-push ] && ln -s $PWD/script/git-hooks/pre-push .git/hooks/pre-push
+  [ -f $PWD/script/git-hooks/pre-push ] && ln -s $PWD/script/git-hooks/pre-push $PWD/.git/hooks/pre-push
 
   # send notification that dotfiles setup has completed
   curl --silent \
