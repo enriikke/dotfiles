@@ -13,8 +13,8 @@ fi
 if [ $(uname -s) = "Darwin" ]; then
   $WD/script/bootstrap-mac
 else
-  apt-get update
-  apt-get install -y ctags fzf gh git httpie imagemagick jq neovim ripgrep tmux tree wget zsh
+  apt-get update -qq
+  apt-get install -qq ctags fzf gh git httpie imagemagick jq neovim ripgrep tmux tree wget zsh
 fi
 
 # copy dotfiles
@@ -41,9 +41,6 @@ fi
 
 # done
 if [ -n $CODESPACES ]; then
-  # git hooks magic
-  [ -f /workspaces/github/script/git-hooks/pre-push ] && ln -s /workspaces/github/script/git-hooks/pre-push /workspaces/github/.git/hooks/pre-push
-
   # send notification that dotfiles setup has completed
   curl --silent \
     --form-string "token=$PUSHOVER_API_TOKEN" \
