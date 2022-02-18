@@ -13,13 +13,13 @@ fi
 if [ $(uname -s) = "Darwin" ]; then
   $WD/script/bootstrap-mac
 else
-  apt-get update -qq
-  apt-get install -qq ctags fzf gh git httpie imagemagick jq neovim ripgrep tmux tree wget zsh
+  sudo apt-get update -qq
+  sudo apt-get install -qq ctags fzf gh git httpie imagemagick jq neovim ripgrep tmux tree wget zsh
 fi
 
 # copy dotfiles
 for f in $WD/dots/*; do
-  ln -sfv $f "~/.$(basename $f)"
+  ln -sfv $f ~/."$(basename $f)"
 done
 
 # install antibody (zsh plugin manager)
