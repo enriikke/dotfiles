@@ -11,8 +11,8 @@ fi
 if [ $(uname -s) = "Darwin" ]; then
   sh $WD/script/bootstrap-mac
 else
-  apt-get update
-  apt-get install -y ctags fzf gh git httpie imagemagick jq neovim ripgrep tmux tree wget zsh
+  apt-get -qq update
+  apt-get -qq install exuberant-ctags fzf gh git httpie imagemagick jq neovim ripgrep tmux tree wget zsh
 fi
 
 # copy dotfiles
@@ -26,7 +26,7 @@ ln -sfv $WD/dots/.zshrc ~/.zshrc
 
 # install antibody (zsh plugin manager)
 # https://getantibody.github.io
-curl -sfL git.io/antibody | sudo sh -s - -b /usr/local/bin
+curl -sfL git.io/antibody | sh -s - -b /usr/local/bin
 
 # install vim-plug (vim plugin manager)
 # https://github.com/junegunn/vim-plug
@@ -35,7 +35,7 @@ nvim +PlugInstall +qall
 
 # change default shell to zsh
 if [ "$SHELL" != $(which zsh) ]; then
-  sudo chsh -s $(which zsh)
+  chsh -s $(which zsh)
 fi
 
 # load zsh and install plugins
