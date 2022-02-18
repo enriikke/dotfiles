@@ -18,8 +18,9 @@ else
 fi
 
 # copy dotfiles
-for f in $WD/dots/*; do
-  ln -sfv $f ~/."$(basename $f)"
+for FILE in $WD/dots/*; do
+  DOTFILE="$HOME/.$(basename $FILE)"
+  ln -sfv "$FILE" "$DOTFILE"
 done
 
 # install antibody (zsh plugin manager)
@@ -29,7 +30,7 @@ curl -sfL git.io/antibody | sudo sh -s - -b /usr/local/bin
 # install vim-plug (vim plugin manager)
 # https://github.com/junegunn/vim-plug
 sh -c 'curl -fLo "${XDG_DATA_HOME:-$HOME/.local/share}"/nvim/site/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim'
-nvim +PlugInstall +qall
+# nvim +PlugInstall +qall
 
 # change default shell to zsh
 if [ "$SHELL" != $(which zsh) ]; then
