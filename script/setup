@@ -18,7 +18,7 @@ fi
 # copy dotfiles
 for FILE in $WD/dots/*; do
   DOTFILE="$HOME/.$(basename $FILE)"
-  ln -sfv $FILE $DOTFILE
+  ln -sFvT $FILE $DOTFILE
 done
 
 # install antibody (zsh plugin manager)
