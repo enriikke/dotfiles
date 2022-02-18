@@ -2,16 +2,24 @@
 
 set -x
 
-exec > >(tee -i $HOME/dotfiles_install.log)
-exec 2>&1
-set -x
-
 # where am i?
-WD=$(pwd -P)
-if [ ! -f "$WD/script/setup" ]; then
-  echo "whoa there! please run me from the root of the repo ☺️"
-  exit 1
+if [ -L "$0" ]; then
+  DIR=$(dirname $(readlink -f $0))
+else
+  DIR=$(dirname $0)
 fi
+
+OLDDIR=$(pwd)
+cd $DIR/..
+WD=$(pwd)
+cd $OLDDIR
+
+
+# WD=$(pwd -P)
+# if [ ! -f "$WD/script/setup" ]; then
+#   echo "whoa there! please run me from the root of the repo ☺️"
+#   exit 1
+# fi
 
 # are we on a mac or GH codespace? bootstrap!
 if [ $(uname -s) = "Darwin" ]; then
