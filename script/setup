@@ -19,8 +19,7 @@ cd $WD
 if [ $(uname -s) = "Darwin" ]; then
   sh $ROOT/script/bootstrap-mac
 else
-  sudo apt-get update
-  sudo apt-get install -y ctags fzf gh git httpie imagemagick jq neovim ripgrep tmux tree wget zsh
+  sh $ROOT/script/bootstrap-codespace
 fi
 
 # copy dotfiles

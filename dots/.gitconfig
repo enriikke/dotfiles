@@ -10,10 +10,6 @@
   editor = code --wait
 [push]
   default = simple
-[commit]
-  gpgsign = true
-[tag]
-  gpgsign = true
 [apply]
   whitespace = fix
 [help]
