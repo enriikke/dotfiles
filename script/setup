@@ -25,12 +25,12 @@ fi
 
 # copy dotfiles
 mkdir -p ~/.config
-ln -sfv $ROOT/dots/config/nvim ~/.config/nvim
-ln -sfv $ROOT/dots/config/zsh ~/.config/zsh
-ln -sfv $ROOT/dots/gitconfig ~/.gitconfig
-ln -sfv $ROOT/dots/gitignore ~/.gitignore
-ln -sfv $ROOT/dots/tmux.conf ~/.tmux.conf
-ln -sfv $ROOT/dots/zshrc ~/.zshrc
+ln -sfv $ROOT/dots/nvim ~/.config/nvim
+ln -sfv $ROOT/dots/zsh ~/.config/zsh
+ln -sfv $ROOT/dots/.gitconfig ~/.gitconfig
+ln -sfv $ROOT/dots/.gitignore ~/.gitignore
+ln -sfv $ROOT/dots/.tmux.conf ~/.tmux.conf
+ln -sfv $ROOT/dots/.zshrc ~/.zshrc
 
 # install antibody (zsh plugin manager)
 # https://getantibody.github.io
