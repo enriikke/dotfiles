@@ -16,13 +16,10 @@ else
 fi
 
 # copy dotfiles
-mkdir -p ~/.config
-ln -sfv $WD/dots/nvim ~/.config/nvim
-ln -sfv $WD/dots/zsh ~/.config/zsh
-ln -sfv $WD/dots/.gitconfig ~/.gitconfig
-ln -sfv $WD/dots/.gitignore ~/.gitignore
-ln -sfv $WD/dots/.tmux.conf ~/.tmux.conf
-ln -sfv $WD/dots/.zshrc ~/.zshrc
+for FILE in $WD/dots/*; do
+  DOTFILE="$HOME/.$(basename $FILE)"
+  ln -sfv $FILE $DOTFILE
+done
 
 # install antibody (zsh plugin manager)
 # https://getantibody.github.io
