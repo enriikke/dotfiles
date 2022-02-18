@@ -9,7 +9,7 @@ fi
 
 # are we on a mac or GH codespace? bootstrap!
 if [ $(uname -s) = "Darwin" ]; then
-  sh $WD/script/bootstrap-mac
+  $WD/script/bootstrap-mac
 else
   apt-get -qq update
   apt-get -qq install exuberant-ctags fzf gh git httpie imagemagick jq neovim ripgrep tmux tree wget zsh
@@ -35,9 +35,6 @@ nvim +PlugInstall +qall
 if [ "$SHELL" != $(which zsh) ]; then
   chsh -s $(which zsh)
 fi
-
-# load zsh and install plugins
-exec zsh
 
 # done
 if [ -n $CODESPACES ]; then

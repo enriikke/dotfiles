@@ -12,4 +12,4 @@ else
 fi
 
 # installing dependencies
-brew bundle --file ../dots/Brewfile
+brew bundle --file $(pwd -P)/dots/Brewfile
