@@ -1,14 +1,9 @@
-#!/bin/bash
+#!/bin/sh
 
-set -x
+# ask for the administrator password upfront and keep `sudo` session alive
+# sudo -s
 
 # where am i?
-# WD=$(pwd -P)
-# if [ ! -f "$WD/script/setup" ]; then
-#   echo "whoa there! please run me from the root of the repo ☺️"
-#   exit 1
-# fi
-
 if [ -L "$0" ]; then
   DIR=$(dirname $(readlink -f $0))
 else
@@ -22,7 +17,7 @@ cd $WD
 
 # are we on a mac or GH codespace? bootstrap!
 if [ $(uname -s) = "Darwin" ]; then
-  $ROOT/script/bootstrap-mac
+  sh $ROOT/script/bootstrap-mac
 else
   sudo apt-get update
   sudo apt-get install -y ctags fzf gh git httpie imagemagick jq neovim ripgrep tmux tree wget zsh
@@ -37,15 +32,14 @@ ln -sfv $ROOT/dots/gitignore ~/.gitignore
 ln -sfv $ROOT/dots/tmux.conf ~/.tmux.conf
 ln -sfv $ROOT/dots/zshrc ~/.zshrc
 
-
 # install antibody (zsh plugin manager)
 # https://getantibody.github.io
 curl -sfL git.io/antibody | sudo sh -s - -b /usr/local/bin
 
 # install vim-plug (vim plugin manager)
 # https://github.com/junegunn/vim-plug
-sh -c 'curl -fLo "${XDG_DATA_HOME:-$HOME/.local/share}"/nvim/site/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim'
-# nvim +PlugInstall +qall
+sudo sh -c 'curl -fLo "${XDG_DATA_HOME:-$HOME/.local/share}"/nvim/site/autoload/plug.vim --create-dirs \
+       https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim'
 
 # change default shell to zsh
 if [ "$SHELL" != $(which zsh) ]; then
@@ -57,6 +51,9 @@ fi
 
 # done
 if [ -n $CODESPACES ]; then
+  # git hooks magic
+  [ -f /workspaces/github/script/git-hooks/pre-push ] && ln -s /workspaces/github/script/git-hooks/pre-push /workspaces/github/.git/hooks/pre-push
+
   # send notification that dotfiles setup has completed
   curl --silent \
     --form-string "token=$PUSHOVER_API_TOKEN" \
