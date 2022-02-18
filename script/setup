@@ -16,6 +16,7 @@ else
 fi
 
 # copy dotfiles
+rm -rf $HOME/.config
 for FILE in $WD/dots/*; do
   DOTFILE="$HOME/.$(basename $FILE)"
   ln -sFvT $FILE $DOTFILE
