@@ -1,23 +1,15 @@
 #!/bin/sh
 
-# ask for the administrator password upfront and keep `sudo` session alive
-# sudo -s
-
 # where am i?
-if [ -L "$0" ]; then
-  DIR=$(dirname $(readlink -f $0))
-else
-  DIR=$(dirname $0)
+WD=$(pwd -P)
+if [ ! -f "$WD/script/setup" ]; then
+  echo "whoa there! please run me from the root of the repo ☺️"
+  exit 1
 fi
-
-WD=$(pwd)
-cd $DIR/..
-ROOT=$(pwd)
-cd $WD
 
 # are we on a mac or GH codespace? bootstrap!
 if [ $(uname -s) = "Darwin" ]; then
-  sh $ROOT/script/bootstrap-mac
+  sh $WD/script/bootstrap-mac
 else
   sudo apt-get update
   sudo apt-get install -y ctags fzf gh git httpie imagemagick jq neovim ripgrep tmux tree wget zsh
@@ -25,12 +17,12 @@ fi
 
 # copy dotfiles
 mkdir -p ~/.config
-ln -sfv $ROOT/dots/nvim ~/.config/nvim
-ln -sfv $ROOT/dots/zsh ~/.config/zsh
-ln -sfv $ROOT/dots/.gitconfig ~/.gitconfig
-ln -sfv $ROOT/dots/.gitignore ~/.gitignore
-ln -sfv $ROOT/dots/.tmux.conf ~/.tmux.conf
-ln -sfv $ROOT/dots/.zshrc ~/.zshrc
+ln -sfv $WD/dots/nvim ~/.config/nvim
+ln -sfv $WD/dots/zsh ~/.config/zsh
+ln -sfv $WD/dots/.gitconfig ~/.gitconfig
+ln -sfv $WD/dots/.gitignore ~/.gitignore
+ln -sfv $WD/dots/.tmux.conf ~/.tmux.conf
+ln -sfv $WD/dots/.zshrc ~/.zshrc
 
 # install antibody (zsh plugin manager)
 # https://getantibody.github.io
