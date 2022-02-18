@@ -19,12 +19,12 @@ fi
 
 # copy dotfiles
 for f in $WD/dots/*; do
-  ln -sfv $f "$HOME/.$(basename $f)"
+  ln -sfv $f "~/.$(basename $f)"
 done
 
 # install antibody (zsh plugin manager)
 # https://getantibody.github.io
-curl -sfL git.io/antibody | sh -s - -b /usr/local/bin
+curl -sfL git.io/antibody | sudo sh -s - -b /usr/local/bin
 
 # install vim-plug (vim plugin manager)
 # https://github.com/junegunn/vim-plug
@@ -33,7 +33,7 @@ nvim +PlugInstall +qall
 
 # change default shell to zsh
 if [ "$SHELL" != $(which zsh) ]; then
-  chsh -s $(which zsh)
+  sudo chsh -s $(which zsh)
 fi
 
 # load zsh and install plugins
