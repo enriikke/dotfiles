@@ -15,6 +15,9 @@ else
   sudo apt-get -qq install exuberant-ctags fzf gh git httpie imagemagick jq neovim rbenv ripgrep tmux tree wget zsh
 fi
 
+# rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
 # copy dotfiles
 rm -rf $HOME/.config
 for FILE in $WD/dots/*; do
