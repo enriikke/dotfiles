@@ -39,6 +39,9 @@ if [ "$SHELL" != $(which zsh) ]; then
   sudo chsh -s $(which zsh)
 fi
 
+# utils
+npm i -g @koddsson/coworking-with
+
 # done
 if [ -n $CODESPACES ]; then
   # git hooks magic
