@@ -1,6 +1,7 @@
 source ~/.config/zsh/init.zsh
 source ~/.config/zsh/exports.zsh
 source ~/.config/zsh/aliases.zsh
+source ~/.config/zsh/prompt.zsh
 
 command -v brew >/dev/null && eval "$(/opt/homebrew/bin/brew shellenv)"
 [ -f ~/.config/zsh/fzf.zsh ] && source ~/.config/zsh/fzf.zsh
