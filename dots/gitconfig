@@ -8,6 +8,7 @@
   excludesfile = ~/.gitignore
   attributesfile = ~/.gitattributes
   editor = code --wait
+  pager = cat
 [push]
   default = simple
 [apply]
