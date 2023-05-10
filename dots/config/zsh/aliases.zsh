@@ -12,3 +12,6 @@ fi
 
 # Reload the shell (i.e. invoke as a login shell)
 alias reload="exec $SHELL -l"
+
+# Git co-working with
+alias gcww='npx @koddsson/coworking-with '
