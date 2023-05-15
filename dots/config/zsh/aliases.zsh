@@ -15,3 +15,7 @@ alias reload="exec $SHELL -l"
 
 # Git co-working with
 alias gcww='npx @koddsson/coworking-with '
+
+# VS Code
+alias vsi='code-insiders'
+alias vsc='code'

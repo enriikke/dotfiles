@@ -1,8 +1,8 @@
 # Setup terminal, editor, shell, and turn on colors
 export TERM=screen-256color
 export SHELL=$(which zsh)
-export VISUAL="nvim"
-export EDITOR="nvim"
+export VISUAL="code-insiders --wait"
+export EDITOR="code-insiders --wait"
 export CLICOLOR=1
 export LSCOLORS=Gxfxcxdxbxegedabagacad
 
