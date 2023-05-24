@@ -30,8 +30,10 @@ cask 'spotify'
 cask 'todoist'
 cask 'ultimaker-cura'
 cask 'visual-studio-code'
-cask 'visual-studio-code-insiders'
 cask 'zoom'
+
+tap 'homebrew/cask-versions'
+cask 'visual-studio-code-insiders'
 
 # fonts
 # tap "homebrew/cask-fonts"
