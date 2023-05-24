@@ -60,16 +60,20 @@ echo -e "\n${BLUE}➡️ Installing coworking-with...\n${NC}"
 npm i -g @koddsson/coworking-with
 
 # done
-if [ -n $CODESPACES ]; then
+if [[ -n "$CODESPACES" ]]; then
   echo -e "\n${BLUE}➡️ Configuring Codespace...\n${NC}"
 
-  # git hooks magic
-  [ -f /workspaces/github/script/git-hooks/pre-push ] && ln -s /workspaces/github/script/git-hooks/pre-push /workspaces/github/.git/hooks/pre-push
+  if [[ -n "$GITHUB_REPOSITORY" == "github/github" && -f /workspaces/github/script/git-hooks/pre-push ]]; then
+    # git hooks magic
+    ln -s /workspaces/github/script/git-hooks/pre-push /workspaces/github/.git/hooks/pre-push
+  fi
 
-  # send notification that dotfiles setup has completed
-  curl --silent \
-    --form-string "token=$PUSHOVER_API_TOKEN" \
-    --form-string "user=$PUSHOVER_USER_KEY" \
-    --form-string "message=🎉 Codespace $CODESPACE_NAME is ready! ✨" \
-    https://api.pushover.net/1/messages.json
+  if [[ -n "$PUSHOVER_API_TOKEN" ]]; then
+    # send notification that dotfiles setup has completed
+    curl --silent \
+      --form-string "token=$PUSHOVER_API_TOKEN" \
+      --form-string "user=$PUSHOVER_USER_KEY" \
+      --form-string "message=🎉 Codespace $CODESPACE_NAME is ready! ✨" \
+      https://api.pushover.net/1/messages.json
+  fi
 fi
