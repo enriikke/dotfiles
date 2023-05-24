@@ -1,5 +1,12 @@
 #!/bin/sh
 
+set -e
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
 # where am i?
 WD=$(pwd -P)
 if [ ! -f "$WD/script/setup" ]; then
@@ -9,16 +16,20 @@ fi
 
 # are we on a mac or GH codespace? bootstrap!
 if [ $(uname -s) = "Darwin" ]; then
+  echo -e "\n${BLUE}➡️ Bootstrapping MacOS...\n${NC}"
   $WD/script/bootstrap-mac
 else
+  echo -e "\n${BLUE}➡️ Bootstrapping Linux...\n${NC}"
   sudo apt-get -qq update
   sudo apt-get -qq install exuberant-ctags fzf gh git httpie imagemagick jq neovim rbenv ripgrep tmux tree wget zsh
 fi
 
 # rust
+echo -e "\n${BLUE}➡️ Installing Rust...\n${NC}"
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
 # copy dotfiles
+echo -e "\n${BLUE}➡️ Symlinking dotfiles...\n${NC}"
 rm -rf $HOME/.config
 for FILE in $WD/dots/*; do
   DOTFILE="$HOME/.$(basename $FILE)"
@@ -27,23 +38,31 @@ done
 
 # install antibody (zsh plugin manager)
 # https://getantibody.github.io
+echo -e "\n${BLUE}➡️ Installing Antibody...\n${NC}"
 curl -sfL git.io/antibody | sudo sh -s - -b /usr/local/bin
 
 # install vim-plug (vim plugin manager)
 # https://github.com/junegunn/vim-plug
+echo -e "\n${BLUE}➡️ Installing Vim-Plug...\n${NC}"
 sh -c 'curl -fLo "${XDG_DATA_HOME:-$HOME/.local/share}"/nvim/site/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim'
+
+echo -e "\n${BLUE}➡️ Installing vim pluggins...\n${NC}"
 nvim +PlugInstall +qall
 
 # change default shell to zsh
 if [ "$SHELL" != $(which zsh) ]; then
+  echo -e "\n${BLUE}➡️ Changing default shell to zsh...\n${NC}"
   sudo chsh -s $(which zsh)
 fi
 
 # utils
+echo -e "\n${BLUE}➡️ Installing coworking-with...\n${NC}"
 npm i -g @koddsson/coworking-with
 
 # done
 if [ -n $CODESPACES ]; then
+  echo -e "\n${BLUE}➡️ Configuring Codespace...\n${NC}"
+
   # git hooks magic
   [ -f /workspaces/github/script/git-hooks/pre-push ] && ln -s /workspaces/github/script/git-hooks/pre-push /workspaces/github/.git/hooks/pre-push
 
