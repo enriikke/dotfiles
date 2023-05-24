@@ -25,4 +25,4 @@ jobs:
         run: bash script/setup
 
       - name: Test ZSH
-        run: zsh -e "source ~/.zshrc"
+        run: zsh -e ~/.zshrc
