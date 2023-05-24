@@ -17,7 +17,7 @@ fi
 # are we on a mac or GH codespace? bootstrap!
 if [ $(uname -s) = "Darwin" ]; then
   echo -e "\n${BLUE}➡️ Bootstrapping MacOS...\n${NC}"
-  script/bootstrap-mac
+  sudo script/bootstrap-mac
 else
   echo -e "\n${BLUE}➡️ Bootstrapping Linux...\n${NC}"
   sudo apt-get -qq update
