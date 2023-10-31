@@ -1,8 +1,8 @@
 # Setup terminal, editor, shell, and turn on colors
 export TERM=screen-256color
 export SHELL=$(which zsh)
-export VISUAL="code-insiders --wait"
-export EDITOR="code-insiders --wait"
+export VISUAL="code --wait"
+export EDITOR="code --wait"
 export CLICOLOR=1
 export LSCOLORS=Gxfxcxdxbxegedabagacad
 
