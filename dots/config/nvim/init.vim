@@ -96,7 +96,7 @@ let g:rehash256 = 1
 
 " color scheme
 " colorscheme nova
-color dracula
+silent! color dracula
 
 " highlight the 81st column
 set colorcolumn=+1
