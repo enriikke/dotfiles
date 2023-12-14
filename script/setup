@@ -39,6 +39,11 @@ for FILE in $WD/dots/*; do
   ln -sf $FILE $DOTFILE
 done
 
+# install antibody (zsh plugin manager)
+# https://getantibody.github.io
+echo -e "\n${BLUE}➡️ Installing Antibody...\n${NC}"
+curl -sfL git.io/antibody | sudo sh -s - -b /usr/local/bin
+
 echo -e "\n${BLUE}➡️ Switching to zsh...\n${NC}"
 exec zsh
 
@@ -51,18 +56,13 @@ echo -e "\n${BLUE}➡️ Installing Node to ${N_PREFIX}...\n${NC}"
 curl -fsSL https://raw.githubusercontent.com/tj/n/master/bin/n | bash -s lts
 npm install -g n
 
-# install antibody (zsh plugin manager)
-# https://getantibody.github.io
-echo -e "\n${BLUE}➡️ Installing Antibody...\n${NC}"
-curl -sfL git.io/antibody | sudo sh -s - -b /usr/local/bin
-
 # install vim-plug (vim plugin manager)
 # https://github.com/junegunn/vim-plug
 echo -e "\n${BLUE}➡️ Installing Vim-Plug...\n${NC}"
 sh -c 'curl -fLo "${XDG_DATA_HOME:-$HOME/.local/share}"/nvim/site/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim'
 
 # echo -e "\n${BLUE}➡️ Installing vim plugins...\n${NC}"
-# nvim +PlugInstall! +qall
+nvim +PlugInstall! +qall
 
 # change default shell to zsh
 echo -e "\n${BLUE}➡️ Changing default shell to zsh...\n${NC}"
