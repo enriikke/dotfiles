@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/zsh
 
 set -e
 
@@ -13,6 +13,17 @@ if [ ! -f "$WD/script/setup" ]; then
   echo "whoa there! please run me from the root of the repo ☺️"
   exit 1
 fi
+
+# copy dotfiles
+echo -e "\n${BLUE}➡️ Symlinking dotfiles...\n${NC}"
+rm -rf $HOME/.config
+for FILE in $WD/dots/*; do
+  DOTFILE="$HOME/.$(basename $FILE)"
+  ln -sf $FILE $DOTFILE
+done
+
+echo -e "\n${BLUE}➡️ Switching to zsh...\n${NC}"
+exec zsh
 
 # are we on a mac or GH codespace? bootstrap!
 if [ $(uname -s) = "Darwin" ]; then
@@ -35,13 +46,10 @@ fi
 echo -e "\n${BLUE}➡️ Installing Rust...\n${NC}"
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
-# copy dotfiles
-echo -e "\n${BLUE}➡️ Symlinking dotfiles...\n${NC}"
-rm -rf $HOME/.config
-for FILE in $WD/dots/*; do
-  DOTFILE="$HOME/.$(basename $FILE)"
-  ln -sf $FILE $DOTFILE
-done
+# node
+echo -e "\n${BLUE}➡️ Installing Node to ${N_PREFIX}...\n${NC}"
+curl -fsSL https://raw.githubusercontent.com/tj/n/master/bin/n | bash -s lts
+npm install -g n
 
 # install antibody (zsh plugin manager)
 # https://getantibody.github.io
