@@ -20,4 +20,5 @@ fi
 
 # installing dependencies
 echo -e "\n${BLUE}➡️ Installing Homebrew bundle...\n${NC}"
+brew upgrade
 brew bundle --file $(pwd -P)/dots/Brewfile

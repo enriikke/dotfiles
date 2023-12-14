@@ -31,10 +31,6 @@ else
   sudo apt-get -qq install curl exuberant-ctags fzf git httpie imagemagick jq mosh neovim rbenv ripgrep tmux tree wget zsh
 fi
 
-# rust
-echo -e "\n${BLUE}➡️ Installing Rust...\n${NC}"
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-
 # copy dotfiles
 echo -e "\n${BLUE}➡️ Symlinking dotfiles...\n${NC}"
 rm -rf $HOME/.config
@@ -48,19 +44,29 @@ done
 echo -e "\n${BLUE}➡️ Installing Antibody...\n${NC}"
 curl -sfL git.io/antibody | sudo sh -s - -b /usr/local/bin
 
+echo -e "\n${BLUE}➡️ Sourcing env vars...\n${NC}"
+source $HOME/.config/zsh/exports.zsh
+
+# rust
+echo -e "\n${BLUE}➡️ Installing Rust...\n${NC}"
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
+# node
+echo -e "\n${BLUE}➡️ Installing Node to ${N_PREFIX}...\n${NC}"
+curl -fsSL https://raw.githubusercontent.com/tj/n/master/bin/n | bash -s lts
+npm install -g n
+
 # install vim-plug (vim plugin manager)
 # https://github.com/junegunn/vim-plug
 echo -e "\n${BLUE}➡️ Installing Vim-Plug...\n${NC}"
 sh -c 'curl -fLo "${XDG_DATA_HOME:-$HOME/.local/share}"/nvim/site/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim'
 
 # echo -e "\n${BLUE}➡️ Installing vim plugins...\n${NC}"
-# nvim +PlugInstall! +qall
+nvim +'PlugInstall --sync' +qall &> /dev/null || true
 
 # change default shell to zsh
-if [ "$SHELL" != $(which zsh) ]; then
-  echo -e "\n${BLUE}➡️ Changing default shell to zsh...\n${NC}"
-  sudo chsh -s $(which zsh)
-fi
+echo -e "\n${BLUE}➡️ Changing default shell to zsh...\n${NC}"
+sudo chsh -s $(which zsh)
 
 # utils
 echo -e "\n${BLUE}➡️ Installing coworking-with...\n${NC}"
