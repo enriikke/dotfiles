@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/sh
 
 set -e
 
@@ -13,17 +13,6 @@ if [ ! -f "$WD/script/setup" ]; then
   echo "whoa there! please run me from the root of the repo ☺️"
   exit 1
 fi
-
-# copy dotfiles
-echo -e "\n${BLUE}➡️ Symlinking dotfiles...\n${NC}"
-rm -rf $HOME/.config
-for FILE in $WD/dots/*; do
-  DOTFILE="$HOME/.$(basename $FILE)"
-  ln -sf $FILE $DOTFILE
-done
-
-echo -e "\n${BLUE}➡️ Switching to zsh...\n${NC}"
-exec zsh
 
 # are we on a mac or GH codespace? bootstrap!
 if [ $(uname -s) = "Darwin" ]; then
@@ -41,6 +30,17 @@ else
 
   sudo apt-get -qq install curl exuberant-ctags fzf git httpie imagemagick jq mosh neovim rbenv ripgrep tmux tree wget zsh
 fi
+
+# copy dotfiles
+echo -e "\n${BLUE}➡️ Symlinking dotfiles...\n${NC}"
+rm -rf $HOME/.config
+for FILE in $WD/dots/*; do
+  DOTFILE="$HOME/.$(basename $FILE)"
+  ln -sf $FILE $DOTFILE
+done
+
+echo -e "\n${BLUE}➡️ Switching to zsh...\n${NC}"
+exec zsh
 
 # rust
 echo -e "\n${BLUE}➡️ Installing Rust...\n${NC}"
@@ -65,10 +65,8 @@ sh -c 'curl -fLo "${XDG_DATA_HOME:-$HOME/.local/share}"/nvim/site/autoload/plug.
 # nvim +PlugInstall! +qall
 
 # change default shell to zsh
-if [ "$SHELL" != $(which zsh) ]; then
-  echo -e "\n${BLUE}➡️ Changing default shell to zsh...\n${NC}"
-  sudo chsh -s $(which zsh)
-fi
+echo -e "\n${BLUE}➡️ Changing default shell to zsh...\n${NC}"
+sudo chsh -s $(which zsh)
 
 # utils
 echo -e "\n${BLUE}➡️ Installing coworking-with...\n${NC}"
