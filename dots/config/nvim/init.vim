@@ -32,7 +32,7 @@ set scrolloff=10                                          " scroll window 10 lin
 set textwidth=80                                          " wrap at 80 characters like a valid human
 set nocursorline                                          " don't highlight the current line
 set nocursorcolumn                                        " don't highlight the current column
-set printoptions=paper:letter                             " use letter as the print output format
+" set printoptions=paper:letter                             " use letter as the print output format
 set guioptions-=T                                         " turn off GUI toolbar (icons)
 set guioptions-=r                                         " turn off GUI right scrollbar
 set guioptions-=L                                         " turn off GUI left scrollbar
