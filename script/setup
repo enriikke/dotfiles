@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 set -e
 
@@ -28,7 +28,14 @@ else
   && sudo apt update \
   && sudo apt install gh -y
 
-  sudo apt-get -qq install curl exuberant-ctags fzf git httpie imagemagick jq mosh neovim rbenv ripgrep tmux tree wget zsh
+  sudo apt-get -qq install curl exuberant-ctags fzf git httpie imagemagick jq mosh rbenv ripgrep tmux tree wget zsh
+
+  # install neovim
+  echo -e "\n${BLUE}➡️ Installing Neovim...\n${NC}"
+  curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim.appimage
+  chmod u+x nvim.appimage
+  sudo mv nvim.appimage /
+  sudo ln -s /nvim.appimage /usr/bin/nvim
 fi
 
 # copy dotfiles
