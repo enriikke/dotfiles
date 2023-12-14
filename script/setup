@@ -44,8 +44,8 @@ done
 echo -e "\n${BLUE}➡️ Installing Antibody...\n${NC}"
 curl -sfL git.io/antibody | sudo sh -s - -b /usr/local/bin
 
-echo -e "\n${BLUE}➡️ Sourcing zsh config...\n${NC}"
-source $HOME/.zshrc
+echo -e "\n${BLUE}➡️ Sourcing env vars...\n${NC}"
+source $HOME/.config/zsh/exports.zsh
 
 # rust
 echo -e "\n${BLUE}➡️ Installing Rust...\n${NC}"
