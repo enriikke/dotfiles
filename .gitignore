@@ -1,0 +1,9 @@
+# zsh
+dots/config/zsh/history
+
+# nvim
+dots/config/nvim/plugged
+dots/config/coc
+
+# misc
+tmp/
