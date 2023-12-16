@@ -4,6 +4,7 @@ dots/config/zsh/history
 # nvim
 dots/config/nvim/plugged
 dots/config/coc
+dots/config/op
 
 # misc
 tmp/
