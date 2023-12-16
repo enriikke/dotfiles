@@ -1,16 +1,23 @@
 [user]
   name = Enrique Gonzalez
   email = "enriikke@gmail.com"
+  signingkey = "~/.ssh/id_rsa.pub"
 [github]
   user = enriikke
 [core]
   # Use custom `.gitignore` and `.gitattributes`
   excludesfile = ~/.gitignore
   attributesfile = ~/.gitattributes
-  editor = code-insiders --wait
+  editor = code --wait
   pager = cat
 [push]
   default = simple
+[pull]
+  rebase = true
+[commit]
+  gpgsign = true
+[gpg]
+  format = ssh
 [apply]
   whitespace = fix
 [help]
