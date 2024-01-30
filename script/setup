@@ -98,7 +98,7 @@ npm i -g @koddsson/coworking-with
 if [[ -n "$CODESPACES" ]]; then
   echo -e "\n${BLUE}➡️ Configuring Codespace...\n${NC}"
 
-  if [[ "$GITHUB_REPOSITORY" == "github/github" && -f /workspaces/github/script/git-hooks/pre-push ]]; then
+  if [[ "$GITHUB_REPOSITORY" == "github/github" && -f /workspaces/github/script/git-hooks/pre-push && ! -e /workspaces/github/.git/hooks/pre-push ]]; then
     # git hooks magic
     ln -s /workspaces/github/script/git-hooks/pre-push /workspaces/github/.git/hooks/pre-push
   fi
