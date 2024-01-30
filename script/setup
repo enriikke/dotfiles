@@ -50,7 +50,7 @@ else
   curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim.appimage
   chmod u+x nvim.appimage
   sudo mv nvim.appimage /
-  sudo ln -s /nvim.appimage /usr/bin/nvim
+  sudo ln -sf /nvim.appimage /usr/bin/nvim
 fi
 
 # copy dotfiles
