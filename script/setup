@@ -97,6 +97,7 @@ npm i -g @koddsson/coworking-with
 # done
 if [[ -n "$CODESPACES" ]]; then
   echo -e "\n${BLUE}➡️ Configuring Codespace...\n${NC}"
+  go install gotest.tools/gotestsum@latest
 
   if [[ "$GITHUB_REPOSITORY" == "github/github" && -f /workspaces/github/script/git-hooks/pre-push && ! -e /workspaces/github/.git/hooks/pre-push ]]; then
     # git hooks magic
