@@ -19,3 +19,6 @@ alias gcww='npx @koddsson/coworking-with '
 # VS Code
 alias vsi='code-insiders'
 alias vsc='code'
+
+# pnpm
+alias pn='pnpm'
