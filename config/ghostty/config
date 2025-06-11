@@ -1,0 +1,30 @@
+# style
+theme = catppuccin-frappe
+
+background-blur = true
+background-blur-radius = 20
+background-opacity = 1
+cursor-style-blink = true
+font-family = FiraCode Nerd Font Mono
+font-size = 20
+font-style = Reg
+unfocused-split-opacity = 0.9
+
+# shell
+shell-integration = zsh
+quit-after-last-window-closed = true
+clipboard-read = allow
+clipboard-write = allow
+
+# macos options
+macos-icon = holographic
+macos-option-as-alt = true
+macos-titlebar-proxy-icon = hidden
+
+# keybindings
+keybind = ctrl+-=new_split:down
+keybind = ctrl+|=new_split:right
+keybind = ctrl+h=goto_split:left
+keybind = ctrl+j=goto_split:bottom
+keybind = ctrl+k=goto_split:top
+keybind = ctrl+l=goto_split:right
