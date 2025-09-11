@@ -1,0 +1,6 @@
+--ignore=\.git
+--ignore=\.github
+--ignore=\.stowrc
+--ignore=README.*
+--ignore=LICENSE
+--ignore=script        # script folder
