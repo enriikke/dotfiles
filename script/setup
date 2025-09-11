@@ -82,6 +82,7 @@ install_dev_tools() {
     "git"
     "gh"            # GitHub CLI
     "mosh"          # Better SSH
+    "stow"          # Symlink farm manager for dotfiles
 
     # Development tools
     "neovim"
@@ -137,13 +138,52 @@ set_default_shell() {
   print_status "✓ Default shell set to zsh"
 }
 
+# Stow dotfiles
+stow_dotfiles() {
+  print_header "Setting up Dotfiles"
+
+  # Check if we're in a dotfiles directory
+  if [[ ! -f ".stowrc" || ! -f ".zshrc" ]]; then
+    print_warning "Not in a dotfiles directory with .stowrc and .zshrc"
+    print_status "Skipping automatic dotfile stowing"
+    print_status "To stow dotfiles later:"
+    print_status "1. cd to your dotfiles directory"
+    print_status "2. Run: stow ."
+    return 0
+  fi
+
+  print_status "Dotfiles directory detected, proceeding with stow..."
+
+  # Check if any files would be overwritten
+  if stow --no --verbose=2 . 2>&1 | grep -q "would conflict"; then
+    print_warning "Some dotfiles already exist and would conflict"
+    echo ""
+    read -p "Do you want to continue and potentially overwrite existing files? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+      print_status "Skipping dotfile stowing - you can run 'stow .' manually later"
+      return 0
+    fi
+  fi
+
+  # Run stow
+  if stow .; then
+    print_status "✓ Dotfiles successfully stowed!"
+    print_status "Symlinks created in home directory pointing to dotfiles repo"
+  else
+    print_error "Failed to stow dotfiles"
+    print_status "You can try running 'stow .' manually from the dotfiles directory"
+    return 1
+  fi
+}
+
 # Verify installation
 verify_installation() {
     print_header "Verifying Installation"
 
     local tools=(
         "zsh" "starship" "fzf" "eza" "bat" "rg" "fd" "zoxide"
-        "git" "gh" "nvim" "tmux" "go" "fnm"
+        "git" "gh" "nvim" "tmux" "go" "fnm" "stow"
     )
 
     local missing=()
@@ -172,6 +212,7 @@ main() {
   echo "  • Homebrew (package manager)"
   echo "  • Zsh with modern plugins"
   echo "  • Development tools (neovim, tmux, git, etc.)"
+  echo "  • Stow dotfiles (if run from dotfiles directory)"
   echo ""
 
   read -p "Continue? (y/N) " -n 1 -r
@@ -185,18 +226,15 @@ main() {
   install_dev_tools
   set_default_shell
   verify_installation
+  stow_dotfiles
 
   print_header "Installation Complete!"
   echo ""
   print_status "🎉 Development environment setup finished!"
   echo ""
   print_status "Next steps:"
-  print_status "1. If dotfiles weren't stowed automatically:"
-  print_status "   • Clone your dotfiles repo"
-  print_status "   • cd into the dotfiles directory"
-  print_status "   • Run: stow ."
-  print_status "2. Restart your terminal or run: exec zsh"
-  print_status "3. Plugins will install automatically on first zsh run"
+  print_status "1. Restart your terminal or run: exec zsh"
+  print_status "2. Plugins will install automatically on first zsh run"
   echo ""
   print_status "Version managers installed:"
   print_status "• fnm for Node.js: fnm install <version>, fnm use <version>"
