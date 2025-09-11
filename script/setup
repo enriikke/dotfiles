@@ -24,6 +24,56 @@ print_header() {
   echo -e "${BLUE}=== $1 ===${NC}"
 }
 
+# Define tools list with package:command mapping
+# Format: "package_name" or "package_name:command_name"
+TOOLS=(
+  # Shell and core utilities
+  "zsh"
+  "starship"
+  "fzf"
+  "eza"        # Modern ls replacement
+  "bat"        # Modern cat replacement
+  "ripgrep:rg" # Modern grep replacement
+  "fd"         # Modern find replacement
+  "zoxide"     # Smart cd replacement
+  "git"
+  "gh"   # GitHub CLI
+  "mosh" # Better SSH
+  "stow" # Symlink farm manager for dotfiles
+
+  # Development tools
+  "neovim:nvim" # Modern vim
+  "tmux"
+  "fnm" # Fast Node.js version manager
+  "go"
+
+  # Additional useful tools
+  "1password-cli:op" # 1Password CLI
+  "jq"               # JSON processor
+  "yq"               # YAML processor
+  "tree"             # Directory tree viewer
+  "htop"             # Better top
+  "curl"
+  "wget"
+  # "gnupg:gpg"           # Uncomment if needed for GPG signing
+)
+
+# Helper function to extract package name from tool entry
+get_package_name() {
+  local tool="$1"
+  echo "${tool%:*}" # Everything before the colon, or the whole string if no colon
+}
+
+# Helper function to extract command name from tool entry
+get_command_name() {
+  local tool="$1"
+  if [[ "$tool" == *":"* ]]; then
+    echo "${tool#*:}" # Everything after the colon
+  else
+    echo "$tool" # Same as package name if no colon
+  fi
+}
+
 # Detect OS
 if [[ "$OSTYPE" == "darwin"* ]]; then
   OS="macos"
@@ -40,7 +90,7 @@ print_status "Detected OS: $OS"
 install_homebrew() {
   print_header "Installing Homebrew"
 
-  if command -v brew > /dev/null 2>&1; then
+  if command -v brew >/dev/null 2>&1; then
     print_status "Homebrew already installed"
     return 0
   fi
@@ -69,39 +119,14 @@ install_homebrew() {
 install_dev_tools() {
   print_header "Installing Development Tools"
 
-  local tools=(
-    # Shell and core utilities
-    "zsh"
-    "starship"
-    "fzf"
-    "eza"           # Modern ls replacement
-    "bat"           # Modern cat replacement
-    "ripgrep"       # Modern grep replacement
-    "fd"            # Modern find replacement
-    "zoxide"        # Smart cd replacement
-    "git"
-    "gh"            # GitHub CLI
-    "mosh"          # Better SSH
-    "stow"          # Symlink farm manager for dotfiles
-
-    # Development tools
-    "neovim"
-    "tmux"
-    "fnm"          # Fast Node.js version manager
-    "go"
-
-    # Additional useful tools
-    "jq"            # JSON processor
-    "yq"            # YAML processor
-    "tree"          # Directory tree viewer
-    "htop"          # Better top
-    "curl"
-    "wget"
-    # gnupg ? for gpg signing
-  )
+  # Extract package names from the tools list
+  local packages=()
+  for tool in "${TOOLS[@]}"; do
+    packages+=("$(get_package_name "$tool")")
+  done
 
   print_status "Installing core development tools..."
-  brew install "${tools[@]}"
+  brew install "${packages[@]}"
 
   # Install fonts (macOS only, Linux users need manual font setup)
   if [[ "$OS" == "macos" ]]; then
@@ -129,7 +154,7 @@ set_default_shell() {
 
   # Add to /etc/shells if not already there
   if ! grep -q "$zsh_path" /etc/shells 2>/dev/null; then
-    echo "$zsh_path" | sudo tee -a /etc/shells > /dev/null
+    echo "$zsh_path" | sudo tee -a /etc/shells >/dev/null
     print_status "Added $zsh_path to /etc/shells"
   fi
 
@@ -179,29 +204,31 @@ stow_dotfiles() {
 
 # Verify installation
 verify_installation() {
-    print_header "Verifying Installation"
+  print_header "Verifying Installation"
 
-    local tools=(
-        "zsh" "starship" "fzf" "eza" "bat" "rg" "fd" "zoxide"
-        "git" "gh" "nvim" "tmux" "go" "fnm" "stow"
-    )
+  # Extract command names from the tools list
+  local commands=()
+  for tool in "${TOOLS[@]}"; do
+    commands+=("$(get_command_name "$tool")")
+  done
 
-    local missing=()
+  local missing=()
 
-    for tool in "${tools[@]}"; do
-        if command -v "$tool" > /dev/null 2>&1; then
-            print_status "✓ $tool"
-        else
-            print_warning "✗ $tool not found"
-            missing+=("$tool")
-        fi
-    done
-
-    if [[ ${#missing[@]} -eq 0 ]]; then
-        print_status "🎉 All tools successfully installed!"
+  for cmd in "${commands[@]}"; do
+    if command -v "$cmd" >/dev/null 2>&1; then
+      print_status "✓ $cmd"
     else
-        print_warning "Some tools are missing: ${missing[*]}"
+      print_warning "✗ $cmd not found"
+      missing+=("$cmd")
     fi
+  done
+
+  if [[ ${#missing[@]} -eq 0 ]]; then
+    print_status "🎉 All tools successfully installed!"
+  else
+    print_warning "Some tools are missing: ${missing[*]}"
+    print_status "You may need to restart your terminal or check your PATH"
+  fi
 }
 
 # Main installation function
