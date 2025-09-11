@@ -14,8 +14,10 @@ print_warning() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 print_header() { echo -e "${BLUE}=== $1 ===${NC}"; }
 
-# SSH key configuration
+# Configuration
 SSH_DIR="$HOME/.ssh"
+WORK_CONFIG_NAME="${WORK_CONFIG_NAME:-SSH Work Config}" # Name in 1Password
+WORK_CONFIG_PATH="$SSH_DIR/config.work"
 
 check_prerequisites() {
   print_header "Checking Prerequisites"
@@ -39,10 +41,7 @@ check_prerequisites() {
   return 0
 }
 
-list_and_select_keys() {
-  print_header "Available SSH Keys in 1Password"
-
-  # List SSH keys with error handling
+list_ssh_keys() {
   local keys_output
   if ! keys_output=$(op item list --categories="SSH Key" --format=json 2>/dev/null); then
     print_error "Failed to list SSH keys from 1Password"
@@ -64,12 +63,6 @@ list_and_select_keys() {
     return 1
   fi
 
-  # Display available keys
-  print_status "Found ${#key_names[@]} SSH key(s):"
-  for i in "${!key_names[@]}"; do
-    echo "  $((i + 1)). ${key_names[i]}"
-  done
-
   echo "${key_names[@]}"
 }
 
@@ -80,7 +73,7 @@ download_ssh_key() {
 
   print_status "Downloading $key_type key: $key_name"
 
-  # Download key directly (no temp file as you suggested!)
+  # Download key directly
   if op item get "$key_name" --field "$key_type key" >"$key_path" 2>/dev/null; then
     # Set appropriate permissions
     if [[ "$key_type" == "private" ]]; then
@@ -93,6 +86,46 @@ download_ssh_key() {
   else
     print_error "✗ Failed to download $key_type key: $key_name"
     rm -f "$key_path" # Clean up on failure
+    return 1
+  fi
+}
+
+download_work_ssh_config() {
+  print_header "Checking for Work SSH Config"
+
+  # Check if work SSH config exists in 1Password
+  if ! op item get "$WORK_CONFIG_NAME" >/dev/null 2>&1; then
+    print_warning "Work SSH config '$WORK_CONFIG_NAME' not found in 1Password"
+    print_status "Skipping work SSH config setup"
+    print_status ""
+    print_status "To store your work SSH config in 1Password:"
+    print_status "1. Open 1Password app"
+    print_status "2. Click '+' → 'Secure Note'"
+    print_status "3. Title: '$WORK_CONFIG_NAME'"
+    print_status "4. Paste your work SSH config in the notes field"
+    print_status "5. Save"
+    return 0
+  fi
+
+  print_status "Found work SSH config: $WORK_CONFIG_NAME"
+
+  # Download the config content
+  if op item get "$WORK_CONFIG_NAME" --field notesPlain >"$WORK_CONFIG_PATH" 2>/dev/null; then
+    chmod 644 "$WORK_CONFIG_PATH"
+    print_status "✓ Work SSH config saved: $WORK_CONFIG_PATH"
+
+    # Validate it looks like SSH config
+    if grep -q "Host\|HostName\|User\|IdentityFile" "$WORK_CONFIG_PATH" 2>/dev/null; then
+      print_status "✓ Work SSH config appears valid"
+    else
+      print_warning "Work SSH config doesn't look like SSH configuration"
+      print_status "Please verify the content in 1Password"
+    fi
+
+    return 0
+  else
+    print_error "✗ Failed to download work SSH config"
+    rm -f "$WORK_CONFIG_PATH"
     return 1
   fi
 }
@@ -150,6 +183,7 @@ show_summary() {
 
   print_header "Summary"
 
+  # SSH Keys Summary
   if [[ $success_count -eq $total_keys ]]; then
     print_status "🎉 All $total_keys SSH key(s) processed successfully!"
   else
@@ -163,52 +197,87 @@ show_summary() {
     fi
   fi
 
-  echo ""
-  print_status "SSH keys are now available in $SSH_DIR"
-  print_status "Your SSH and Git configurations (from dotfiles) should handle the rest!"
+  # Work Config Summary
+  if [[ -f "$WORK_CONFIG_PATH" ]]; then
+    print_status "✓ Work SSH config installed: $WORK_CONFIG_PATH"
+  else
+    print_status "○ No work SSH config (optional)"
+  fi
 
-  # Show available keys
-  print_status ""
-  print_status "Downloaded SSH keys:"
-  find "$SSH_DIR" -name "id_rsa*" -type f | sort | while read -r keyfile; do
-    if [[ -f "$keyfile" ]]; then
-      local perms
-      perms=$(stat -f "%Mp%Lp" "$keyfile" 2>/dev/null || stat -c "%a" "$keyfile" 2>/dev/null || echo "???")
-      print_status "  $(basename "$keyfile") ($perms)"
+  echo ""
+  print_status "SSH setup complete! Files created in $SSH_DIR:"
+
+  # Show downloaded files
+  find "$SSH_DIR" -maxdepth 1 -name "id_rsa*" -o -name "config.work" | sort | while read -r file; do
+    if [[ -f "$file" ]]; then
+      local perms basename_file
+      perms=$(stat -f "%Mp%Lp" "$file" 2>/dev/null || stat -c "%a" "$file" 2>/dev/null || echo "???")
+      basename_file=$(basename "$file")
+      print_status "  $basename_file ($perms)"
     fi
   done
+
+  echo ""
+  print_status "Your SSH and Git configurations (from dotfiles) will handle the rest!"
+  print_status "Test with: ssh -T git@github.com"
 }
 
 show_usage() {
-  echo "Usage: $0 [KEY_NAME...]"
+  echo "Usage: $0 [OPTIONS] [KEY_NAME...]"
   echo ""
-  echo "Download SSH keys from 1Password to ~/.ssh/"
+  echo "Download SSH keys and work config from 1Password to ~/.ssh/"
+  echo ""
+  echo "OPTIONS:"
+  echo "  --work-config NAME    Name of work SSH config in 1Password"
+  echo "                        (default: 'SSH Work Config')"
+  echo "  -h, --help           Show this help message"
   echo ""
   echo "ARGUMENTS:"
-  echo "  KEY_NAME    Specific SSH key name(s) to download"
-  echo "              If not provided, shows all available keys"
+  echo "  KEY_NAME             Specific SSH key name(s) to download"
+  echo "                       If not provided, downloads all available keys"
   echo ""
   echo "EXAMPLES:"
-  echo "  $0                           # Interactive: show all keys"
-  echo "  $0 'Git Signing Key'        # Download specific key"
-  echo "  $0 'Key 1' 'Key 2'          # Download multiple keys"
+  echo "  $0                                    # Download all keys + work config"
+  echo "  $0 'Git Signing Key'                 # Download specific key + work config"
+  echo "  $0 --work-config 'My Work SSH'       # Use custom work config name"
+  echo ""
+  echo "1PASSWORD SETUP:"
+  echo "  SSH Keys: 1Password app → + → SSH Key → Import/Generate"
+  echo "  Work Config: 1Password app → + → Secure Note → Title: 'SSH Work Config'"
   echo ""
   echo "PREREQUISITES:"
   echo "  • 1Password CLI (op) installed and signed in"
   echo "  • SSH keys stored in 1Password"
-  echo "  • Dotfiles repo stowed (for SSH/Git config)"
+  echo "  • Dotfiles repo stowed (for main SSH config)"
 }
 
 main() {
-  # Parse help flag
-  for arg in "$@"; do
-    if [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
+  # Parse command line arguments
+  local keys_to_process=()
+
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+    --work-config)
+      WORK_CONFIG_NAME="$2"
+      shift 2
+      ;;
+    -h | --help)
       show_usage
       exit 0
-    fi
+      ;;
+    -*)
+      print_error "Unknown option: $1"
+      show_usage
+      exit 1
+      ;;
+    *)
+      keys_to_process+=("$1")
+      shift
+      ;;
+    esac
   done
 
-  print_header "1Password SSH Key Download"
+  print_header "1Password SSH Setup"
   echo ""
 
   # Check prerequisites
@@ -216,13 +285,13 @@ main() {
     exit 1
   fi
 
-  # Determine which keys to process
-  local keys_to_process=()
+  # Determine which SSH keys to process
+  if [[ ${#keys_to_process[@]} -eq 0 ]]; then
+    # Download all available keys
+    print_header "Available SSH Keys in 1Password"
 
-  if [[ $# -eq 0 ]]; then
-    # Interactive mode: list all keys
     local available_keys
-    if ! available_keys=$(list_and_select_keys); then
+    if ! available_keys=$(list_ssh_keys); then
       exit 1
     fi
 
@@ -230,22 +299,28 @@ main() {
     read -ra keys_to_process <<<"$available_keys"
 
     if [[ ${#keys_to_process[@]} -eq 0 ]]; then
-      print_error "No keys available"
+      print_error "No SSH keys available"
       exit 1
     fi
 
+    print_status "Found ${#keys_to_process[@]} SSH key(s):"
+    for i in "${!keys_to_process[@]}"; do
+      echo "  $((i + 1)). ${keys_to_process[i]}"
+    done
     echo ""
     print_status "Will download all ${#keys_to_process[@]} key(s)"
   else
     # Use provided key names
-    keys_to_process=("$@")
     print_status "Will download ${#keys_to_process[@]} specified key(s)"
   fi
 
   echo ""
 
-  # Process the keys
+  # Process SSH keys
   process_ssh_keys "${keys_to_process[@]}"
+
+  # Download work SSH config (optional)
+  download_work_ssh_config
 
   # Show summary
   show_summary "${#keys_to_process[@]}" "$PROCESSED_COUNT" "${FAILED_KEYS[@]}"
