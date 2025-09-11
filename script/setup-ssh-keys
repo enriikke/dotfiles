@@ -1,0 +1,257 @@
+#!/bin/bash
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+print_status() { echo -e "${GREEN}[INFO]${NC} $1"; }
+print_warning() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+print_header() { echo -e "${BLUE}=== $1 ===${NC}"; }
+
+# SSH key configuration
+SSH_DIR="$HOME/.ssh"
+
+check_prerequisites() {
+  print_header "Checking Prerequisites"
+
+  # Check if op CLI is installed
+  if ! command -v op >/dev/null 2>&1; then
+    print_error "1Password CLI (op) not found"
+    print_status "Install with: brew install 1password-cli"
+    return 1
+  fi
+  print_status "✓ 1Password CLI found"
+
+  # Check if signed in
+  if ! op account list >/dev/null 2>&1; then
+    print_error "1Password CLI not signed in"
+    print_status "Sign in with: op signin"
+    return 1
+  fi
+  print_status "✓ 1Password CLI signed in"
+
+  return 0
+}
+
+list_and_select_keys() {
+  print_header "Available SSH Keys in 1Password"
+
+  # List SSH keys with error handling
+  local keys_output
+  if ! keys_output=$(op item list --categories="SSH Key" --format=json 2>/dev/null); then
+    print_error "Failed to list SSH keys from 1Password"
+    return 1
+  fi
+
+  # Parse JSON to get key names
+  local key_names=()
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && key_names+=("$line")
+  done < <(echo "$keys_output" | jq -r '.[].title' 2>/dev/null || echo "")
+
+  if [[ ${#key_names[@]} -eq 0 ]]; then
+    print_error "No SSH keys found in 1Password"
+    print_status "Create SSH keys in 1Password:"
+    print_status "1. Open 1Password app"
+    print_status "2. Click '+' → 'SSH Key'"
+    print_status "3. Either 'Import Existing' or 'Generate New'"
+    return 1
+  fi
+
+  # Display available keys
+  print_status "Found ${#key_names[@]} SSH key(s):"
+  for i in "${!key_names[@]}"; do
+    echo "  $((i + 1)). ${key_names[i]}"
+  done
+
+  echo "${key_names[@]}"
+}
+
+download_ssh_key() {
+  local key_name="$1"
+  local key_path="$2"
+  local key_type="$3" # "private" or "public"
+
+  print_status "Downloading $key_type key: $key_name"
+
+  # Download key directly (no temp file as you suggested!)
+  if op item get "$key_name" --field "$key_type key" >"$key_path" 2>/dev/null; then
+    # Set appropriate permissions
+    if [[ "$key_type" == "private" ]]; then
+      chmod 600 "$key_path"
+    else
+      chmod 644 "$key_path"
+    fi
+    print_status "✓ $key_type key saved: $key_path"
+    return 0
+  else
+    print_error "✗ Failed to download $key_type key: $key_name"
+    rm -f "$key_path" # Clean up on failure
+    return 1
+  fi
+}
+
+process_ssh_keys() {
+  local keys=("$@")
+  local success_count=0
+  local failed_keys=()
+
+  print_header "Processing SSH Keys"
+
+  for key_name in "${keys[@]}"; do
+    print_status "Processing: $key_name"
+
+    # Generate file paths (normalize key name for filename)
+    local safe_name
+    safe_name=$(echo "$key_name" | tr ' ' '_' | tr -cd '[:alnum:]._-')
+    local private_path="$SSH_DIR/id_rsa_${safe_name}"
+    local public_path="$SSH_DIR/id_rsa_${safe_name}.pub"
+
+    # Download private and public keys
+    local private_ok=false
+    local public_ok=false
+
+    if download_ssh_key "$key_name" "$private_path" "private"; then
+      private_ok=true
+    fi
+
+    if download_ssh_key "$key_name" "$public_path" "public"; then
+      public_ok=true
+    fi
+
+    # Track results
+    if [[ "$private_ok" == true && "$public_ok" == true ]]; then
+      ((success_count++))
+      print_status "✓ Successfully processed: $key_name"
+    else
+      failed_keys+=("$key_name")
+      print_warning "✗ Failed to process: $key_name"
+    fi
+
+    echo "" # Add spacing between keys
+  done
+
+  # Return results via global variables (bash limitation workaround)
+  PROCESSED_COUNT=$success_count
+  FAILED_KEYS=("${failed_keys[@]}")
+}
+
+show_summary() {
+  local total_keys=$1
+  local success_count=$2
+  shift 2
+  local failed_keys=("$@")
+
+  print_header "Summary"
+
+  if [[ $success_count -eq $total_keys ]]; then
+    print_status "🎉 All $total_keys SSH key(s) processed successfully!"
+  else
+    print_status "Processed $success_count out of $total_keys SSH key(s)"
+
+    if [[ ${#failed_keys[@]} -gt 0 ]]; then
+      print_warning "Failed keys:"
+      for key in "${failed_keys[@]}"; do
+        print_warning "  • $key"
+      done
+    fi
+  fi
+
+  echo ""
+  print_status "SSH keys are now available in $SSH_DIR"
+  print_status "Your SSH and Git configurations (from dotfiles) should handle the rest!"
+
+  # Show available keys
+  print_status ""
+  print_status "Downloaded SSH keys:"
+  find "$SSH_DIR" -name "id_rsa*" -type f | sort | while read -r keyfile; do
+    if [[ -f "$keyfile" ]]; then
+      local perms
+      perms=$(stat -f "%Mp%Lp" "$keyfile" 2>/dev/null || stat -c "%a" "$keyfile" 2>/dev/null || echo "???")
+      print_status "  $(basename "$keyfile") ($perms)"
+    fi
+  done
+}
+
+show_usage() {
+  echo "Usage: $0 [KEY_NAME...]"
+  echo ""
+  echo "Download SSH keys from 1Password to ~/.ssh/"
+  echo ""
+  echo "ARGUMENTS:"
+  echo "  KEY_NAME    Specific SSH key name(s) to download"
+  echo "              If not provided, shows all available keys"
+  echo ""
+  echo "EXAMPLES:"
+  echo "  $0                           # Interactive: show all keys"
+  echo "  $0 'Git Signing Key'        # Download specific key"
+  echo "  $0 'Key 1' 'Key 2'          # Download multiple keys"
+  echo ""
+  echo "PREREQUISITES:"
+  echo "  • 1Password CLI (op) installed and signed in"
+  echo "  • SSH keys stored in 1Password"
+  echo "  • Dotfiles repo stowed (for SSH/Git config)"
+}
+
+main() {
+  # Parse help flag
+  for arg in "$@"; do
+    if [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
+      show_usage
+      exit 0
+    fi
+  done
+
+  print_header "1Password SSH Key Download"
+  echo ""
+
+  # Check prerequisites
+  if ! check_prerequisites; then
+    exit 1
+  fi
+
+  # Determine which keys to process
+  local keys_to_process=()
+
+  if [[ $# -eq 0 ]]; then
+    # Interactive mode: list all keys
+    local available_keys
+    if ! available_keys=$(list_and_select_keys); then
+      exit 1
+    fi
+
+    # Convert to array
+    read -ra keys_to_process <<<"$available_keys"
+
+    if [[ ${#keys_to_process[@]} -eq 0 ]]; then
+      print_error "No keys available"
+      exit 1
+    fi
+
+    echo ""
+    print_status "Will download all ${#keys_to_process[@]} key(s)"
+  else
+    # Use provided key names
+    keys_to_process=("$@")
+    print_status "Will download ${#keys_to_process[@]} specified key(s)"
+  fi
+
+  echo ""
+
+  # Process the keys
+  process_ssh_keys "${keys_to_process[@]}"
+
+  # Show summary
+  show_summary "${#keys_to_process[@]}" "$PROCESSED_COUNT" "${FAILED_KEYS[@]}"
+}
+
+# Run main function if script is executed directly
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi
