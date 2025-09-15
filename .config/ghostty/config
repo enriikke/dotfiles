@@ -1,5 +1,5 @@
 # style
-theme = catppuccin-frappe
+theme = catppuccin-frappe.conf
 
 background-blur = true
 background-blur-radius = 20
