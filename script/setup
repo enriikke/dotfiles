@@ -114,8 +114,7 @@ install_dev_tools() {
   # Install fonts (macOS only, Linux users need manual font setup)
   if is_macos; then
     print_status "Installing Nerd Fonts..."
-    brew tap homebrew/cask-fonts
-    brew install --cask font-jetbrains-mono-nerd-font font-fira-code-nerd-font font-fira-mono-nerd-font
+    brew install --cask font-jetbrains-mono-nerd-font font-fira-mono-nerd-font font-fira-code-nerd-font
   else
     print_warning "Font installation skipped on Linux. Install Nerd Fonts manually if needed."
   fi
