@@ -294,7 +294,11 @@ eval "$(zoxide init zsh --cmd cd)"
 eval "$(fnm env --use-on-cd --shell zsh)"
 
 # bun completions
-[ -s "$BUN_INSTALL/_bun" ] && source "$BUN_INSTALL/_bun"
+if [ -s "$BUN_INSTALL/_bun" ]; then
+  source "$BUN_INSTALL/_bun"
+fi
 
 # Load local customizations if they exist
-[[ -f ~/.zshrc.local ]] && source ~/.zshrc.local
+if [ -f "$HOME/.zshrc.local" ]; then
+  source "$HOME/.zshrc.local"
+fi
