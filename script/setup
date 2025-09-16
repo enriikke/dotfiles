@@ -37,14 +37,13 @@ TOOLS=(
   "go"
 
   # Additional useful tools
-  "1password-cli:op" # 1Password CLI
-  "jq"               # JSON processor
-  "yq"               # YAML processor
-  "tree"             # Directory tree viewer
-  "htop"             # Better top
+  "jq"   # JSON processor
+  "yq"   # YAML processor
+  "tree" # Directory tree viewer
+  "htop" # Better top
   "curl"
   "wget"
-  # "gnupg:gpg"           # Uncomment if needed for GPG signing
+  "gnupg:gpg" # GPG signing
 )
 
 # Helper function to extract package name from tool entry
@@ -152,6 +151,22 @@ set_default_shell() {
   print_status "✓ Default shell set to zsh"
 }
 
+# Install 1Password CLI separately
+install_1password_cli() {
+  print_header "Installing 1Password CLI"
+
+  local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local onepassword_script="$script_dir/install-1password-cli"
+
+  if [[ -f "$onepassword_script" ]]; then
+    print_status "Running 1Password CLI installation script..."
+    "$onepassword_script"
+  else
+    print_warning "1Password CLI installation script not found at $onepassword_script"
+    print_status "You can install it manually or run the script separately"
+  fi
+}
+
 # Stow dotfiles
 stow_dotfiles() {
   print_header "Setting up Dotfiles"
@@ -212,6 +227,14 @@ verify_installation() {
     fi
   done
 
+  # check 1Password CLI separately
+  if command -v op >/dev/null 2>&1; then
+    print_status "✓ op (1Password CLI)"
+  else
+    print_warning "✗ op (1Password CLI) not found"
+    missing+=("op")
+  fi
+
   if [[ ${#missing[@]} -eq 0 ]]; then
     print_status "🎉 All tools successfully installed!"
   else
@@ -228,11 +251,13 @@ main() {
   echo "  • Homebrew (package manager)"
   echo "  • Zsh with modern plugins"
   echo "  • Development tools (neovim, tmux, git, etc.)"
+  echo "  • 1Password CLI (separate installation)"
   echo "  • Stow dotfiles (if run from dotfiles directory)"
   echo ""
 
   install_homebrew
   install_dev_tools
+  install_1password_cli
   set_default_shell
   verify_installation
   stow_dotfiles
