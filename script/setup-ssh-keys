@@ -1,18 +1,11 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -e
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
-
-print_status() { echo -e "${GREEN}[INFO]${NC} $1"; }
-print_warning() { echo -e "${YELLOW}[WARN]${NC} $1"; }
-print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
-print_header() { echo -e "${BLUE}=== $1 ===${NC}"; }
+# Source shared helpers
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=script/common.sh
+. "$script_dir/common.sh"
 
 # Configuration
 SSH_DIR="$HOME/.ssh"
@@ -51,7 +44,7 @@ list_ssh_keys() {
   # Parse JSON to get key names
   local key_names=()
   while IFS= read -r line; do
-    [[ -n "$line" ]] && key_names+=("$line")
+    [[ -n $line ]] && key_names+=("$line")
   done < <(echo "$keys_output" | jq -r '.[].title' 2>/dev/null || echo "")
 
   if [[ ${#key_names[@]} -eq 0 ]]; then
@@ -76,7 +69,7 @@ download_ssh_key() {
   # Download key directly
   if op item get "$key_name" --field "$key_type key" >"$key_path" 2>/dev/null; then
     # Set appropriate permissions
-    if [[ "$key_type" == "private" ]]; then
+    if [[ $key_type == "private" ]]; then
       chmod 600 "$key_path"
     else
       chmod 644 "$key_path"
@@ -159,7 +152,7 @@ process_ssh_keys() {
     fi
 
     # Track results
-    if [[ "$private_ok" == true && "$public_ok" == true ]]; then
+    if [[ $private_ok == true && $public_ok == true ]]; then
       ((success_count++))
       print_status "✓ Successfully processed: $key_name"
     else
@@ -198,7 +191,7 @@ show_summary() {
   fi
 
   # Work Config Summary
-  if [[ -f "$WORK_CONFIG_PATH" ]]; then
+  if [[ -f $WORK_CONFIG_PATH ]]; then
     print_status "✓ Work SSH config installed: $WORK_CONFIG_PATH"
   else
     print_status "○ No work SSH config (optional)"
@@ -209,7 +202,7 @@ show_summary() {
 
   # Show downloaded files
   find "$SSH_DIR" -maxdepth 1 -name "id_rsa*" -o -name "config.work" | sort | while read -r file; do
-    if [[ -f "$file" ]]; then
+    if [[ -f $file ]]; then
       local perms basename_file
       perms=$(stat -f "%Mp%Lp" "$file" 2>/dev/null || stat -c "%a" "$file" 2>/dev/null || echo "???")
       basename_file=$(basename "$file")
@@ -257,23 +250,23 @@ main() {
 
   while [[ $# -gt 0 ]]; do
     case $1 in
-    --work-config)
-      WORK_CONFIG_NAME="$2"
-      shift 2
-      ;;
-    -h | --help)
-      show_usage
-      exit 0
-      ;;
-    -*)
-      print_error "Unknown option: $1"
-      show_usage
-      exit 1
-      ;;
-    *)
-      keys_to_process+=("$1")
-      shift
-      ;;
+      --work-config)
+        WORK_CONFIG_NAME="$2"
+        shift 2
+        ;;
+      -h | --help)
+        show_usage
+        exit 0
+        ;;
+      -*)
+        print_error "Unknown option: $1"
+        show_usage
+        exit 1
+        ;;
+      *)
+        keys_to_process+=("$1")
+        shift
+        ;;
     esac
   done
 
@@ -327,6 +320,6 @@ main() {
 }
 
 # Run main function if script is executed directly
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+if [[ ${BASH_SOURCE[0]} == "${0}" ]]; then
   main "$@"
 fi

@@ -3,4 +3,5 @@
 --ignore=\.stowrc
 --ignore=README.*
 --ignore=LICENSE
+--ignore=Makefile
 --ignore=script        # script folder

@@ -1,0 +1,51 @@
+name: Lint and Setup
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Install lint/format deps (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck shfmt make
+
+      - name: Install lint/format deps (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew update
+          brew install shellcheck shfmt make
+
+      - name: Lint and format check
+        run: make check
+
+      - name: Prepare temporary HOME
+        run: |
+          TEMP_HOME="$(mktemp -d)"
+          echo "Using HOME=$TEMP_HOME"
+          echo "HOME=$TEMP_HOME" >> "$GITHUB_ENV"
+
+      - name: Run setup script
+        env:
+          SHELL: /bin/zsh
+        run: bash script/setup
+
+      - name: Test Zsh config
+        run: zsh -xc 'source "$HOME/.zshrc"'
