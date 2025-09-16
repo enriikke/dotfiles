@@ -11,9 +11,18 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SSH_DIR="$HOME/.ssh"
 WORK_CONFIG_NAME="${WORK_CONFIG_NAME:-SSH Work Config}" # Name in 1Password
 WORK_CONFIG_PATH="$SSH_DIR/config.work"
+DEFAULT_KEY_NAME="${DEFAULT_KEY_NAME:-}" # Optional: title to link as id_rsa
 
 check_prerequisites() {
   print_header "Checking Prerequisites"
+
+  # Check jq availability (required for parsing JSON)
+  if ! command -v jq >/dev/null 2>&1; then
+    print_error "jq not found (required to parse 1Password output)"
+    print_status "Install with: brew install jq (or your package manager)"
+    return 1
+  fi
+  print_status "✓ jq found"
 
   # Check if op CLI is installed
   if ! command -v op >/dev/null 2>&1; then
@@ -32,6 +41,35 @@ check_prerequisites() {
   print_status "✓ 1Password CLI signed in"
 
   return 0
+}
+
+ensure_ssh_dir() {
+  mkdir -p "$SSH_DIR"
+  chmod 700 "$SSH_DIR" 2>/dev/null || true
+}
+
+# Determine key algorithm/type from 1Password item metadata.
+# Returns one of: ed25519 | rsa | unknown
+get_key_type() {
+  local key_name="$1"
+  local raw
+  if ! raw=$(op item get "$key_name" --format json 2>/dev/null); then
+    printf '%s\n' unknown
+    return 1
+  fi
+  # Extract the "key type" field (case-insensitive), then normalize
+  local val
+  val=$(printf '%s' "$raw" | jq -r '.fields[]? | select((.label // "") | ascii_downcase == "key type") | .value' 2>/dev/null)
+  val=$(printf '%s' "$val" | tr '[:upper:]' '[:lower:]')
+  if [[ -z $val ]]; then
+    printf '%s\n' unknown
+  elif [[ $val == *ed25519* ]]; then
+    printf '%s\n' ed25519
+  elif [[ $val == *rsa* ]]; then
+    printf '%s\n' rsa
+  else
+    printf '%s\n' unknown
+  fi
 }
 
 list_ssh_keys() {
@@ -133,11 +171,21 @@ process_ssh_keys() {
   for key_name in "${keys[@]}"; do
     print_status "Processing: $key_name"
 
-    # Generate file paths (normalize key name for filename)
+    # Normalize key name for filenames
     local safe_name
     safe_name=$(echo "$key_name" | tr ' ' '_' | tr -cd '[:alnum:]._-')
-    local private_path="$SSH_DIR/id_rsa_${safe_name}"
-    local public_path="$SSH_DIR/id_rsa_${safe_name}.pub"
+
+    # Determine desired filename prefix from 1Password metadata
+    local key_type prefix
+    key_type=$(get_key_type "$key_name" 2>/dev/null || echo unknown)
+    case "$key_type" in
+      ed25519) prefix="id_ed25519" ;;
+      rsa) prefix="id_rsa" ;;
+      *) prefix="id_key" ;;
+    esac
+
+    local private_path="$SSH_DIR/${prefix}_${safe_name}"
+    local public_path="$private_path.pub"
 
     # Download private and public keys
     local private_ok=false
@@ -153,9 +201,12 @@ process_ssh_keys() {
 
     # Track results
     if [[ $private_ok == true && $public_ok == true ]]; then
+      chmod 600 "$private_path" 2>/dev/null || true
+      chmod 644 "$public_path" 2>/dev/null || true
       ((success_count++))
-      print_status "✓ Successfully processed: $key_name"
+      print_status "✓ Successfully processed: $key_name -> $(basename "$private_path")"
     else
+      rm -f "$private_path" "$public_path"
       failed_keys+=("$key_name")
       print_warning "✗ Failed to process: $key_name"
     fi
@@ -166,6 +217,35 @@ process_ssh_keys() {
   # Return results via global variables (bash limitation workaround)
   PROCESSED_COUNT=$success_count
   FAILED_KEYS=("${failed_keys[@]}")
+}
+
+link_default_key() {
+  local title="$1"
+  [[ -z $title ]] && return 0
+
+  local safe_name
+  safe_name=$(echo "$title" | tr ' ' '_' | tr -cd '[:alnum:]._-')
+
+  local candidate
+  for candidate in "id_rsa_${safe_name}" "id_ed25519_${safe_name}" "id_key_${safe_name}"; do
+    if [[ -f "$SSH_DIR/$candidate" ]]; then
+      local priv="$SSH_DIR/$candidate"
+      local pub="$priv.pub"
+
+      if [[ -e "$SSH_DIR/id_rsa" || -e "$SSH_DIR/id_rsa.pub" ]]; then
+        print_warning "id_rsa or id_rsa.pub already exists; skipping default key link"
+        return 0
+      fi
+
+      ln -sf "$priv" "$SSH_DIR/id_rsa"
+      [[ -f $pub ]] && ln -sf "$pub" "$SSH_DIR/id_rsa.pub"
+      print_status "✓ Set default key: id_rsa -> $(basename "$priv")"
+      return 0
+    fi
+  done
+
+  print_warning "Default key '$title' not found among processed keys"
+  return 0
 }
 
 show_summary() {
@@ -201,7 +281,7 @@ show_summary() {
   print_status "SSH setup complete! Files created in $SSH_DIR:"
 
   # Show downloaded files
-  find "$SSH_DIR" -maxdepth 1 -name "id_rsa*" -o -name "config.work" | sort | while read -r file; do
+  find "$SSH_DIR" -maxdepth 1 \( -name "id_rsa*" -o -name "id_ed25519*" -o -name "config.work" \) | sort | while read -r file; do
     if [[ -f $file ]]; then
       local perms basename_file
       perms=$(stat -f "%Mp%Lp" "$file" 2>/dev/null || stat -c "%a" "$file" 2>/dev/null || echo "???")
@@ -223,6 +303,7 @@ show_usage() {
   echo "OPTIONS:"
   echo "  --work-config NAME    Name of work SSH config in 1Password"
   echo "                        (default: 'SSH Work Config')"
+  echo "  --default-key NAME    Title of the key to link as ~/.ssh/id_rsa"
   echo "  -h, --help           Show this help message"
   echo ""
   echo "ARGUMENTS:"
@@ -233,6 +314,7 @@ show_usage() {
   echo "  $0                                    # Download all keys + work config"
   echo "  $0 'Git Signing Key'                 # Download specific key + work config"
   echo "  $0 --work-config 'My Work SSH'       # Use custom work config name"
+  echo "  $0 --default-key 'Primary Key'       # Link 'Primary Key' as id_rsa"
   echo ""
   echo "1PASSWORD SETUP:"
   echo "  SSH Keys: 1Password app → + → SSH Key → Import/Generate"
@@ -252,6 +334,10 @@ main() {
     case $1 in
       --work-config)
         WORK_CONFIG_NAME="$2"
+        shift 2
+        ;;
+      --default-key)
+        DEFAULT_KEY_NAME="$2"
         shift 2
         ;;
       -h | --help)
@@ -276,6 +362,22 @@ main() {
   # Check prerequisites
   if ! check_prerequisites; then
     exit 1
+  fi
+
+  # Ensure ~/.ssh exists with secure permissions
+  ensure_ssh_dir
+
+  # If no default specified, pick one based on host name
+  if [[ -z $DEFAULT_KEY_NAME ]]; then
+    local host_name
+    host_name=$(scutil --get ComputerName 2>/dev/null || hostname 2>/dev/null || uname -n 2>/dev/null || echo "")
+    host_name=$(printf '%s' "$host_name" | tr '[:upper:]' '[:lower:]')
+    if [[ $host_name == *navi* ]]; then
+      DEFAULT_KEY_NAME="gh_navi"
+    else
+      DEFAULT_KEY_NAME="gh_neptr"
+    fi
+    print_status "Auto-selected default key: $DEFAULT_KEY_NAME (host: $host_name)"
   fi
 
   # Determine which SSH keys to process
@@ -311,6 +413,11 @@ main() {
 
   # Process SSH keys
   process_ssh_keys "${keys_to_process[@]}"
+
+  # Link default key as id_rsa if requested
+  if [[ -n $DEFAULT_KEY_NAME ]]; then
+    link_default_key "$DEFAULT_KEY_NAME"
+  fi
 
   # Download work SSH config (optional)
   download_work_ssh_config

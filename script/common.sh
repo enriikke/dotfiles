@@ -54,8 +54,6 @@ print_header() { printf '%b\n' "${BLUE}=== $* ===${NC}"; }
 # Environment helpers
 # ----------------------------------------------------------------------------
 
-# (Intentionally minimal: no strict/trace toggles to keep things simple.)
-
 # Determine OS: echoes one of macos|linux; returns non-zero for unknown
 detect_os() {
   case "$OSTYPE" in
