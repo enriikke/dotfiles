@@ -50,33 +50,11 @@ print_warning() { printf '%b\n' "${YELLOW}[WARN]${NC} $*"; }
 print_error() { printf '%b\n' "${RED}[ERROR]${NC} $*"; }
 print_header() { printf '%b\n' "${BLUE}=== $* ===${NC}"; }
 
-die() {
-  # Print an error and exit with non-zero status (default 1 or provided code)
-  local code=${2:-1}
-  print_error "$1"
-  exit "$code"
-}
-
 # ----------------------------------------------------------------------------
 # Environment helpers
 # ----------------------------------------------------------------------------
 
-# Enable strict mode in the caller (opt-in)
-# Usage: common_strict_mode        # sets -Eeuo pipefail and IFS
-common_strict_mode() {
-  # shellcheck disable=SC2034 # IFS is intentionally set for the caller's scope
-  IFS=$'\n\t'
-  set -Eeuo pipefail
-}
-
-# Optional tracing when TRACE=1 in the environment
-common_maybe_trace() {
-  if [[ ${TRACE:-} == "1" ]]; then
-    # Helpful xtrace with time and function/line
-    export PS4='+ ${BASH_SOURCE##*/}:${LINENO}:${FUNCNAME[0]:-main}: '
-    set -x
-  fi
-}
+# (Intentionally minimal: no strict/trace toggles to keep things simple.)
 
 # Determine OS: echoes one of macos|linux; returns non-zero for unknown
 detect_os() {
@@ -88,7 +66,6 @@ detect_os() {
 }
 
 is_macos() { [[ "$(detect_os 2>/dev/null || true)" == "macos" ]]; }
-is_linux() { [[ "$(detect_os 2>/dev/null || true)" == "linux" ]]; }
 
 # Ensure required commands exist. Usage: require_cmds brew git curl
 require_cmds() {

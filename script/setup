@@ -150,8 +150,6 @@ set_default_shell() {
 install_1password_cli() {
   print_header "Installing 1Password CLI"
 
-  local script_dir
-  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   local onepassword_script="$script_dir/install-1password-cli"
 
   if [[ -f $onepassword_script ]]; then
@@ -180,7 +178,7 @@ stow_dotfiles() {
   print_status "Dotfiles directory detected, proceeding with stow..."
 
   # Check if any files would be overwritten
-  if stow --no --verbose=2 --target="$HOME" . 2>&1 | grep -q "would conflict"; then
+  if stow --simulate --verbose=2 --target="$HOME" . 2>&1 | grep -q "would conflict"; then
     print_warning "Some dotfiles already exist and would conflict"
     echo ""
     if ! confirm "Do you want to continue and potentially overwrite existing files?" n; then
