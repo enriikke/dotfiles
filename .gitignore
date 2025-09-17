@@ -12,3 +12,20 @@ Thumbs.db
 
 # Misc
 tmp/
+
+# Exclude work-specific SSH configurations
+config.work
+config.local
+*.work
+
+# Exclude all SSH keys (public and private)
+id_*
+*_rsa*
+*_ed25519*
+*.pub
+*.pem
+
+# Exclude other sensitive SSH files
+authorized_keys
+known_hosts*
+sockets/
