@@ -8,10 +8,11 @@
   # Use custom `.gitignore` and `.gitattributes`
   excludesfile = ~/.gitignore
   attributesfile = ~/.gitattributes
-  editor = code --wait
-  pager = cat
+  editor = nvim --wait
+  pager = bat
 [push]
   default = simple
+  autoSetupRemote = true
 [pull]
   rebase = true
 [commit]

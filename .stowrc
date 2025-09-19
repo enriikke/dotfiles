@@ -1,0 +1,14 @@
+--ignore=\.git
+--ignore=\.github
+--ignore=\.stowrc
+--ignore=README.*
+--ignore=LICENSE
+--ignore=Makefile
+--ignore=.DS_Store
+--ignore=script        # script folder
+
+# Ignore runtime-generated files
+--ignore=.*history     # zsh history, bash history, etc.
+--ignore=plugins\.zsh  # antidote generated plugins file
+--ignore=antidote/     # antidote cache directory
+--ignore=op/           # 1Password CLI data

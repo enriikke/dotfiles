@@ -1,115 +1,278 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -e
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Source shared helpers
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=script/common.sh
+. "$script_dir/common.sh"
 
-# where am i?
-WD=$(pwd -P)
-if [ ! -f "$WD/script/setup" ]; then
-  echo "whoa there! please run me from the root of the repo ☺️"
+# Define tools list with package:command mapping
+# Format: "package_name" or "package_name:command_name"
+TOOLS=(
+  # Shell and core utilities
+  "zsh"
+  "starship"
+  "fzf"
+  "eza"        # Modern ls replacement
+  "bat"        # Modern cat replacement
+  "ripgrep:rg" # Modern grep replacement
+  "fd"         # Modern find replacement
+  "zoxide"     # Smart cd replacement
+  "git"
+  "gh"   # GitHub CLI
+  "mosh" # Better SSH
+  "stow" # Symlink farm manager for dotfiles
+  "make" # Build tool
+
+  # Development tools
+  "neovim:nvim" # Modern vim
+  "tmux"
+  "fnm" # Fast Node.js version manager
+  "go"
+
+  # Shell scripting tools
+  "shellcheck" # Shell script linter
+  "shfmt"      # Shell script formatter
+
+  # Additional useful tools
+  "jq"   # JSON processor
+  "yq"   # YAML processor
+  "tree" # Directory tree viewer
+  "htop" # Better top
+  "curl"
+  "wget"
+  "gnupg:gpg" # GPG signing
+)
+
+# Helper function to extract package name from tool entry
+get_package_name() {
+  local tool="$1"
+  echo "${tool%:*}" # Everything before the colon, or the whole string if no colon
+}
+
+# Helper function to extract command name from tool entry
+get_command_name() {
+  local tool="$1"
+  if [[ $tool == *":"* ]]; then
+    echo "${tool#*:}" # Everything after the colon
+  else
+    echo "$tool" # Same as package name if no colon
+  fi
+}
+
+# Detect OS
+if ! OS="$(detect_os)"; then
+  print_error "Unsupported operating system: $OSTYPE"
   exit 1
 fi
 
-# are we on a mac or GH codespace? bootstrap!
-if [ $(uname -s) = "Darwin" ]; then
-  echo -e "\n${BLUE}➡️ Bootstrapping MacOS...\n${NC}"
-  /bin/bash script/bootstrap-mac
-else
-  echo -e "\n${BLUE}➡️ Bootstrapping Linux...\n${NC}"
-  sudo apt-get -qq update
-  sudo apt-get -qq install curl exuberant-ctags fzf git gnupg httpie imagemagick jq mosh rbenv ripgrep tmux tree wget zsh
+print_status "Detected OS: $OS"
 
-  # install gh cli
-  echo -e "\n${BLUE}➡️ Installing gh cli...\n${NC}"
-  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
-  && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
-  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-  && sudo apt update \
-  && sudo apt install gh -y 
+# Install Homebrew (works on both macOS and Linux now!)
+install_homebrew() {
+  print_header "Installing Homebrew"
 
-  # install 1P cli
-  echo -e "\n${BLUE}➡️ Installing 1P cli...\n${NC}"
-  curl -sS https://downloads.1password.com/linux/keys/1password.asc | sudo gpg --dearmor --output /usr/share/keyrings/1password-archive-keyring.gpg
-
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/1password-archive-keyring.gpg] https://downloads.1password.com/linux/debian/$(dpkg --print-architecture) stable main" |
-  sudo tee /etc/apt/sources.list.d/1password.list
-
-  sudo mkdir -p /etc/debsig/policies/AC2D62742012EA22/
-  curl -sS https://downloads.1password.com/linux/debian/debsig/1password.pol | sudo tee /etc/debsig/policies/AC2D62742012EA22/1password.pol
-  sudo mkdir -p /usr/share/debsig/keyrings/AC2D62742012EA22
-  curl -sS https://downloads.1password.com/linux/keys/1password.asc | sudo gpg --dearmor --output /usr/share/debsig/keyrings/AC2D62742012EA22/debsig.gpg
-
-  sudo apt update && sudo apt install 1password-cli
-
-  # install neovim
-  echo -e "\n${BLUE}➡️ Installing Neovim...\n${NC}"
-  curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim.appimage
-  chmod u+x nvim.appimage
-  sudo mv nvim.appimage /
-  sudo ln -sf /nvim.appimage /usr/bin/nvim
-fi
-
-# copy dotfiles
-echo -e "\n${BLUE}➡️ Symlinking dotfiles...\n${NC}"
-rm -rf $HOME/.config
-for FILE in $WD/dots/*; do
-  DOTFILE="$HOME/.$(basename $FILE)"
-  ln -sf $FILE $DOTFILE
-done
-
-# install antibody (zsh plugin manager)
-# https://getantibody.github.io
-echo -e "\n${BLUE}➡️ Installing Antibody...\n${NC}"
-curl -sfL git.io/antibody | sudo sh -s - -b /usr/local/bin
-
-echo -e "\n${BLUE}➡️ Sourcing env vars...\n${NC}"
-source $HOME/.config/zsh/exports.zsh
-
-# rust
-echo -e "\n${BLUE}➡️ Installing Rust...\n${NC}"
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-
-# node
-echo -e "\n${BLUE}➡️ Installing Node to ${N_PREFIX}...\n${NC}"
-curl -fsSL https://raw.githubusercontent.com/tj/n/master/bin/n | bash -s lts
-npm install -g n
-
-# install vim-plug (vim plugin manager)
-# https://github.com/junegunn/vim-plug
-echo -e "\n${BLUE}➡️ Installing Vim-Plug...\n${NC}"
-sh -c 'curl -fLo "${XDG_DATA_HOME:-$HOME/.local/share}"/nvim/site/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim'
-
-# echo -e "\n${BLUE}➡️ Installing vim plugins...\n${NC}"
-nvim +'PlugInstall --sync' +qall &> /dev/null || true
-
-# change default shell to zsh
-echo -e "\n${BLUE}➡️ Changing default shell to zsh...\n${NC}"
-sudo chsh -s $(which zsh)
-
-# utils
-echo -e "\n${BLUE}➡️ Installing coworking-with...\n${NC}"
-npm i -g @koddsson/coworking-with
-
-# done
-if [[ -n "$CODESPACES" ]]; then
-  echo -e "\n${BLUE}➡️ Configuring Codespace...\n${NC}"
-  go install gotest.tools/gotestsum@latest
-
-  if [[ "$GITHUB_REPOSITORY" == "github/github" && -f /workspaces/github/script/git-hooks/pre-push && ! -e /workspaces/github/.git/hooks/pre-push ]]; then
-    # git hooks magic
-    ln -s /workspaces/github/script/git-hooks/pre-push /workspaces/github/.git/hooks/pre-push
+  if command -v brew >/dev/null 2>&1; then
+    print_status "Homebrew already installed"
+    return 0
   fi
 
-  if [[ -n "$PUSHOVER_API_TOKEN" ]]; then
-    # send notification that dotfiles setup has completed
-    curl --silent \
-      --form-string "token=$PUSHOVER_API_TOKEN" \
-      --form-string "user=$PUSHOVER_USER_KEY" \
-      --form-string "message=🎉 Codespace $CODESPACE_NAME is ready! ✨" \
-      https://api.pushover.net/1/messages.json
+  print_status "Installing Homebrew..."
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+  # Initialize Homebrew environment for current session
+  if is_macos; then
+    if [[ -x "/opt/homebrew/bin/brew" ]]; then
+      # macOS Apple Silicon
+      eval "$(/opt/homebrew/bin/brew shellenv)"
+    elif [[ -x "/usr/local/bin/brew" ]]; then
+      # macOS Intel
+      eval "$(/usr/local/bin/brew shellenv)"
+    fi
+  else
+    # Linux
+    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
   fi
-fi
+
+  print_status "✓ Homebrew installed and configured"
+}
+
+# Install all development tools via Homebrew
+install_dev_tools() {
+  print_header "Installing Development Tools"
+
+  # Extract package names from the tools list
+  local packages=()
+  for tool in "${TOOLS[@]}"; do
+    packages+=("$(get_package_name "$tool")")
+  done
+
+  print_status "Installing core development tools..."
+  brew install --quiet "${packages[@]}"
+
+  # Install fonts (macOS only, Linux users need manual font setup)
+  if is_macos; then
+    print_status "Installing Nerd Fonts..."
+
+    local fonts=("font-jetbrains-mono-nerd-font" "font-fira-mono-nerd-font" "font-fira-code-nerd-font")
+    for font in "${fonts[@]}"; do
+      print_status "Installing $font..."
+      if brew install --cask "$font" 2>/dev/null; then
+        print_status "✓ $font installed"
+      else
+        print_status "✓ $font already installed (or installation failed)"
+      fi
+    done
+  else
+    print_warning "Font installation skipped on Linux. Install Nerd Fonts manually if needed."
+  fi
+
+  print_status "✓ Development tools installed"
+}
+
+# Set zsh as default shell
+set_default_shell() {
+  print_header "Setting Zsh as Default Shell"
+
+  if [[ $SHELL == *"zsh"* ]]; then
+    print_status "Zsh is already the default shell"
+    return 0
+  fi
+
+  local zsh_path
+  zsh_path=$(command -v zsh)
+
+  # Add to /etc/shells if not already there
+  if ! grep -q "$zsh_path" /etc/shells 2>/dev/null; then
+    echo "$zsh_path" | sudo tee -a /etc/shells >/dev/null
+    print_status "Added $zsh_path to /etc/shells"
+  fi
+
+  # Change default shell
+  chsh -s "$zsh_path"
+  print_status "✓ Default shell set to zsh"
+}
+
+# Install 1Password CLI separately
+install_1password_cli() {
+  print_header "Installing 1Password CLI"
+
+  local onepassword_script="$script_dir/install-1password-cli"
+
+  if [[ -f $onepassword_script ]]; then
+    print_status "Running 1Password CLI installation script..."
+    "$onepassword_script"
+  else
+    print_warning "1Password CLI installation script not found at $onepassword_script"
+    print_status "You can install it manually or run the script separately"
+  fi
+}
+
+# Stow dotfiles
+stow_dotfiles() {
+  print_header "Setting up Dotfiles"
+
+  # Check if we're in a dotfiles directory
+  if [[ ! -f ".stowrc" || ! -f ".zshrc" ]]; then
+    print_warning "Not in a dotfiles directory with .stowrc and .zshrc"
+    print_status "Skipping automatic dotfile stowing"
+    print_status "To stow dotfiles later:"
+    print_status "1. cd to your dotfiles directory"
+    print_status "2. Run: stow ."
+    return 0
+  fi
+
+  print_status "Dotfiles directory detected, proceeding with stow..."
+
+  # Check if any files would be overwritten
+  if stow --simulate --verbose=2 --target="$HOME" . 2>&1 | grep -q "would conflict"; then
+    print_warning "Some dotfiles already exist and would conflict"
+    echo ""
+    if ! confirm "Do you want to continue and potentially overwrite existing files?" n; then
+      print_status "Skipping dotfile stowing - you can run 'stow .' manually later"
+      return 0
+    fi
+  fi
+
+  # Run stow targeting home explicitly
+  if stow --target="$HOME" .; then
+    print_status "✓ Dotfiles successfully stowed!"
+    print_status "Symlinks created in home directory pointing to dotfiles repo"
+  else
+    print_error "Failed to stow dotfiles"
+    print_status "You can try running 'stow .' manually from the dotfiles directory"
+    return 1
+  fi
+}
+
+# Verify installation
+verify_installation() {
+  print_header "Verifying Installation"
+
+  # Extract command names from the tools list
+  local commands=()
+  for tool in "${TOOLS[@]}"; do
+    commands+=("$(get_command_name "$tool")")
+  done
+
+  local missing=()
+
+  for cmd in "${commands[@]}"; do
+    if command -v "$cmd" >/dev/null 2>&1; then
+      print_status "✓ $cmd"
+    else
+      print_warning "✗ $cmd not found"
+      missing+=("$cmd")
+    fi
+  done
+
+  # check 1Password CLI separately
+  if command -v op >/dev/null 2>&1; then
+    print_status "✓ op (1Password CLI)"
+  else
+    print_warning "✗ op (1Password CLI) not found"
+    missing+=("op")
+  fi
+
+  if [[ ${#missing[@]} -eq 0 ]]; then
+    print_status "🎉 All tools successfully installed!"
+  else
+    print_warning "Some tools are missing: ${missing[*]}"
+    print_status "You may need to restart your terminal or check your PATH"
+  fi
+}
+
+# Main installation function
+main() {
+  print_header "Development Environment Setup"
+
+  echo "Installing development environment..."
+  echo "  • Homebrew (package manager)"
+  echo "  • Zsh with modern plugins"
+  echo "  • Development tools (neovim, tmux, git, etc.)"
+  echo "  • 1Password CLI (separate installation)"
+  echo "  • Stow dotfiles (if run from dotfiles directory)"
+  echo ""
+
+  install_homebrew
+  install_dev_tools
+  install_1password_cli
+  set_default_shell
+  verify_installation
+  stow_dotfiles
+
+  print_header "Installation Complete!"
+  echo ""
+  print_status "🎉 Development environment setup finished!"
+  echo ""
+  print_status "Next steps:"
+  print_status "1. Restart your terminal or run: exec zsh"
+  print_status "2. Plugins will install automatically on first zsh run"
+  print_status "3. Set up SSH keys from 1Password: ./script/setup-ssh-keys"
+  echo ""
+  print_status "🚀 Happy coding!"
+}
+
+# Run main function
+main "$@"
