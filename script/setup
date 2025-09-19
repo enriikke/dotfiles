@@ -109,7 +109,7 @@ install_dev_tools() {
   done
 
   print_status "Installing core development tools..."
-  brew install "${packages[@]}"
+  brew install --quiet "${packages[@]}"
 
   # Install fonts (macOS only, Linux users need manual font setup)
   if is_macos; then
