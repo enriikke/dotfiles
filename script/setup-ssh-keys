@@ -104,21 +104,26 @@ download_ssh_key() {
 
   print_status "Downloading $key_type key: $key_name"
 
-  # Download key directly
-  if op item get "$key_name" --field "$key_type key" >"$key_path" 2>/dev/null; then
-    # Set appropriate permissions
-    if [[ $key_type == "private" ]]; then
+  # Download key directly (use --reveal for private keys to get actual content)
+  if [[ $key_type == "private" ]]; then
+    if op item get "$key_name" --field "private key" --reveal >"$key_path" 2>/dev/null; then
+      # Remove wrapping quotes and trim empty lines
+      sed -i '' '1s/^"//; $s/"$//; /^$/d' "$key_path"
       chmod 600 "$key_path"
-    else
-      chmod 644 "$key_path"
+      print_status "✓ $key_type key saved: $key_path"
+      return 0
     fi
-    print_status "✓ $key_type key saved: $key_path"
-    return 0
   else
-    print_error "✗ Failed to download $key_type key: $key_name"
-    rm -f "$key_path" # Clean up on failure
-    return 1
+    if op item get "$key_name" --field "public key" >"$key_path" 2>/dev/null; then
+      chmod 644 "$key_path"
+      print_status "✓ $key_type key saved: $key_path"
+      return 0
+    fi
   fi
+
+  print_error "✗ Failed to download $key_type key: $key_name"
+  rm -f "$key_path" # Clean up on failure
+  return 1
 }
 
 download_work_ssh_config() {
@@ -141,7 +146,9 @@ download_work_ssh_config() {
   print_status "Found work SSH config: $WORK_CONFIG_NAME"
 
   # Download the config content
-  if op item get "$WORK_CONFIG_NAME" --field notesPlain >"$WORK_CONFIG_PATH" 2>/dev/null; then
+  if op item get "$WORK_CONFIG_NAME" --field notesPlain --reveal >"$WORK_CONFIG_PATH" 2>/dev/null; then
+    # Remove wrapping quotes and trim empty lines
+    sed -i '' '1s/^"//; $s/"$//; /^$/d' "$WORK_CONFIG_PATH"
     chmod 644 "$WORK_CONFIG_PATH"
     print_status "✓ Work SSH config saved: $WORK_CONFIG_PATH"
 
