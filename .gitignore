@@ -29,3 +29,26 @@ id_*
 authorized_keys
 known_hosts*
 sockets/
+
+# Runtime-generated files that shouldn't be tracked
+*history
+.config/zsh/history
+.config/zsh/plugins.zsh
+.config/zsh/antidote/
+
+# Additional sensitive files
+.aws/credentials
+.aws/config
+.gnupg/
+.config/gh/hosts.yml          # GitHub CLI tokens
+.config/1Password/
+.netrc                        # Network credentials
+.authinfo*                    # Authentication info
+.credentials                  # Generic credentials
+.env*                         # Environment files (often contain secrets)
+.secrets*
+
+# Application data that might contain sensitive info
+.docker/config.json           # Docker registry credentials
+.kube/config                  # Kubernetes configs
+.terraform.d/credentials*

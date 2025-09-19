@@ -114,7 +114,16 @@ install_dev_tools() {
   # Install fonts (macOS only, Linux users need manual font setup)
   if is_macos; then
     print_status "Installing Nerd Fonts..."
-    brew install --cask font-jetbrains-mono-nerd-font font-fira-mono-nerd-font font-fira-code-nerd-font
+
+    local fonts=("font-jetbrains-mono-nerd-font" "font-fira-mono-nerd-font" "font-fira-code-nerd-font")
+    for font in "${fonts[@]}"; do
+      print_status "Installing $font..."
+      if brew install --cask "$font" 2>/dev/null; then
+        print_status "✓ $font installed"
+      else
+        print_status "✓ $font already installed (or installation failed)"
+      fi
+    done
   else
     print_warning "Font installation skipped on Linux. Install Nerd Fonts manually if needed."
   fi
