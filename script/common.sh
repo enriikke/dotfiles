@@ -80,13 +80,25 @@ require_cmds() {
   fi
 }
 
+# Detect if running in non-interactive mode (CI, Codespaces, etc.)
+is_non_interactive() {
+  [[ ! -t 0 ]] || [[ -n ${CI:-} ]] || [[ -n ${CODESPACES:-} ]] || [[ -n ${GITHUB_CODESPACE_TOKEN:-} ]]
+}
+
 # Y/N prompt. Returns 0 for yes, 1 for no.
 # Usage: if confirm "Proceed?"; then ...
+# In non-interactive mode, automatically returns the default value
 confirm() {
   local prompt=${1:-"Are you sure?"}
   local default=${2:-"n"} # y or n
   local suffix="[y/N]"
   [[ $default == "y" || $default == "Y" ]] && suffix="[Y/n]"
+
+  # In non-interactive mode, use default without prompting
+  if is_non_interactive; then
+    print_status "$prompt $suffix (non-interactive: using default '$default')"
+    [[ $default == "y" || $default == "Y" ]] && return 0 || return 1
+  fi
 
   while true; do
     printf '%s ' "$prompt $suffix"

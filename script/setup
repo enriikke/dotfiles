@@ -146,13 +146,30 @@ set_default_shell() {
 
   # Add to /etc/shells if not already there
   if ! grep -q "$zsh_path" /etc/shells 2>/dev/null; then
+    print_status "Adding $zsh_path to /etc/shells..."
     echo "$zsh_path" | sudo tee -a /etc/shells >/dev/null
     print_status "Added $zsh_path to /etc/shells"
   fi
 
-  # Change default shell
-  chsh -s "$zsh_path"
-  print_status "✓ Default shell set to zsh"
+  # Change default shell - use sudo in non-interactive environments
+  print_status "Changing default shell to zsh..."
+  if is_non_interactive; then
+    # In Codespaces and CI environments, chsh often requires sudo
+    if sudo chsh -s "$zsh_path" "$USER" 2>/dev/null; then
+      print_status "✓ Default shell set to zsh (using sudo)"
+    else
+      print_warning "Could not change default shell automatically"
+      print_status "You may need to run: chsh -s $zsh_path"
+      return 0
+    fi
+  else
+    if chsh -s "$zsh_path"; then
+      print_status "✓ Default shell set to zsh"
+    else
+      print_warning "Failed to change shell. You may need to run: chsh -s $zsh_path"
+      return 0
+    fi
+  fi
 }
 
 # Install 1Password CLI separately
@@ -167,6 +184,71 @@ install_1password_cli() {
   else
     print_warning "1Password CLI installation script not found at $onepassword_script"
     print_status "You can install it manually or run the script separately"
+  fi
+}
+
+# Backup existing dotfiles that would conflict with stow
+backup_conflicting_files() {
+  local backup_dir
+  backup_dir="$HOME/.dotfiles_backup_$(date +%Y%m%d_%H%M%S)"
+  local conflicts_found=false
+
+  print_status "Checking for conflicting files..."
+
+  # Get list of files that would be stowed (excluding ignored files)
+  # We need to find all files in current directory that aren't ignored by stow
+  local files_to_check=(
+    ".zshrc"
+    ".gitconfig"
+    ".gitignore"
+    ".ssh"
+    ".config"
+  )
+
+  for item in "${files_to_check[@]}"; do
+    local target_path="$HOME/$item"
+    local source_path
+    source_path="$(pwd)/$item"
+
+    # Skip if source doesn't exist
+    [[ ! -e $source_path ]] && continue
+
+    # Check if target exists and is not already a symlink to our dotfiles
+    if [[ -e $target_path || -L $target_path ]]; then
+      # If it's a symlink pointing to our dotfiles, skip it
+      if [[ -L $target_path ]]; then
+        local link_target
+        link_target=$(readlink "$target_path")
+        if [[ $link_target == "$source_path" || $link_target == "$(realpath "$source_path")" ]]; then
+          print_status "✓ $item already symlinked correctly"
+          continue
+        fi
+      fi
+
+      # File/dir exists and conflicts
+      if ! $conflicts_found; then
+        conflicts_found=true
+        mkdir -p "$backup_dir"
+        print_status "Created backup directory: $backup_dir"
+      fi
+
+      print_status "Backing up existing $item..."
+      if [[ -d $target_path && ! -L $target_path ]]; then
+        # It's a real directory, move it
+        mv "$target_path" "$backup_dir/"
+        print_status "✓ Moved directory $item to backup"
+      else
+        # It's a file or symlink, move it
+        mv "$target_path" "$backup_dir/"
+        print_status "✓ Moved $item to backup"
+      fi
+    fi
+  done
+
+  if $conflicts_found; then
+    print_status "✓ Conflicting files backed up to: $backup_dir"
+  else
+    print_status "✓ No conflicting files found"
   fi
 }
 
@@ -186,17 +268,28 @@ stow_dotfiles() {
 
   print_status "Dotfiles directory detected, proceeding with stow..."
 
-  # Check if any files would be overwritten
-  if stow --simulate --verbose=2 --target="$HOME" . 2>&1 | grep -q "would conflict"; then
+  # Check if any files would conflict
+  if stow --simulate --no --verbose=2 --target="$HOME" . 2>&1 | grep -q "would conflict"; then
     print_warning "Some dotfiles already exist and would conflict"
-    echo ""
-    if ! confirm "Do you want to continue and potentially overwrite existing files?" n; then
-      print_status "Skipping dotfile stowing - you can run 'stow .' manually later"
-      return 0
+
+    # In non-interactive mode, always backup and proceed
+    if is_non_interactive; then
+      print_status "Non-interactive mode: automatically backing up existing files"
+      backup_conflicting_files
+    else
+      # In interactive mode, ask user
+      echo ""
+      if confirm "Do you want to backup existing files and continue?" y; then
+        backup_conflicting_files
+      else
+        print_status "Skipping dotfile stowing - you can run 'stow .' manually later"
+        return 0
+      fi
     fi
   fi
 
   # Run stow targeting home explicitly
+  print_status "Running stow to create symlinks..."
   if stow --target="$HOME" .; then
     print_status "✓ Dotfiles successfully stowed!"
     print_status "Symlinks created in home directory pointing to dotfiles repo"
