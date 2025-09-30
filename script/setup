@@ -30,6 +30,7 @@ TOOLS=(
   "tmux"
   "fnm" # Fast Node.js version manager
   "go"
+  "lazygit"
 
   # Shell scripting tools
   "shellcheck" # Shell script linter
