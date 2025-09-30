@@ -42,7 +42,8 @@ TOOLS=(
   "htop" # Better top
   "curl"
   "wget"
-  "gnupg:gpg" # GPG signing
+  "gnupg:gpg"   # GPG signing
+  "httpie:http" # Better curl replacement
 )
 
 # Helper function to extract package name from tool entry

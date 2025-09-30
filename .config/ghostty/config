@@ -6,7 +6,7 @@ background-blur-radius = 20
 background-opacity = 1
 cursor-style-blink = true
 font-family = JetBrainsMono Nerd Font
-font-size = 20
+font-size = 18
 font-style = Reg
 unfocused-split-opacity = 0.9
 
@@ -28,3 +28,4 @@ keybind = ctrl+h=goto_split:left
 keybind = ctrl+j=goto_split:bottom
 keybind = ctrl+k=goto_split:top
 keybind = ctrl+l=goto_split:right
+keybind = shift+enter=text:\x1b\r

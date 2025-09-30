@@ -10,6 +10,18 @@ Thumbs.db
 .Spotlight-V100
 .Trashes
 
+# Ignore everything in .config by default
+.config/*
+
+# Allow specific configurations
+!.config/ghostty
+!.config/zsh
+
+# Ignore runtime zsh files
+.config/zsh/history
+.config/zsh/plugins.zsh
+.config/zsh/antidote/
+
 # Misc
 tmp/
 
@@ -32,9 +44,6 @@ sockets/
 
 # Runtime-generated files that shouldn't be tracked
 *history
-.config/zsh/history
-.config/zsh/plugins.zsh
-.config/zsh/antidote/
 
 # Additional sensitive files
 .aws/credentials
@@ -42,7 +51,6 @@ sockets/
 .gnupg/
 .config/gh/hosts.yml          # GitHub CLI tokens
 .config/1Password/
-.config/op/                  # 1Password CLI data and files
 .netrc                        # Network credentials
 .authinfo*                    # Authentication info
 .credentials                  # Generic credentials
