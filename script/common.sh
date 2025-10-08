@@ -85,6 +85,11 @@ is_non_interactive() {
   [[ ! -t 0 ]] || [[ -n ${CI:-} ]] || [[ -n ${CODESPACES:-} ]] || [[ -n ${GITHUB_CODESPACE_TOKEN:-} ]]
 }
 
+# Detect if running in GitHub Codespaces
+is_codespace() {
+  [[ -n ${CODESPACES:-} ]] || [[ -n ${GITHUB_CODESPACE_TOKEN:-} ]]
+}
+
 # Y/N prompt. Returns 0 for yes, 1 for no.
 # Usage: if confirm "Proceed?"; then ...
 # In non-interactive mode, automatically returns the default value
