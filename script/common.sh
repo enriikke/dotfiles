@@ -86,6 +86,8 @@ is_non_interactive() {
 }
 
 # Detect if running in GitHub Codespaces
+# Returns 0 (true) if in Codespaces, 1 (false) otherwise
+# Checks for CODESPACES or GITHUB_CODESPACE_TOKEN environment variables
 is_codespace() {
   [[ -n ${CODESPACES:-} ]] || [[ -n ${GITHUB_CODESPACE_TOKEN:-} ]]
 }
