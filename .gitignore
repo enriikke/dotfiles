@@ -16,6 +16,7 @@ Thumbs.db
 # Allow specific configurations
 !.config/ghostty
 !.config/zsh
+!.config/nvim
 
 # Ignore runtime zsh files
 .config/zsh/history

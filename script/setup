@@ -19,6 +19,7 @@ TOOLS=(
   "ripgrep:rg" # Modern grep replacement
   "fd"         # Modern find replacement
   "zoxide"     # Smart cd replacement
+  "ast-grep"
   "git"
   "gh"   # GitHub CLI
   "mosh" # Better SSH
@@ -31,6 +32,7 @@ TOOLS=(
   "fnm" # Fast Node.js version manager
   "go"
   "lazygit"
+  "rbenv"
 
   # Shell scripting tools
   "shellcheck" # Shell script linter
