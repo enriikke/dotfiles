@@ -179,9 +179,9 @@ set_default_shell() {
 install_1password_cli() {
   print_header "Installing 1Password CLI"
 
-  # Skip 1Password installation in GitHub Codespaces
-  if is_codespace; then
-    print_status "Skipping 1Password CLI installation in GitHub Codespaces"
+  # Skip 1Password installation in github/github Codespaces only
+  if is_gh_codespace; then
+    print_status "Skipping 1Password CLI installation in github/github Codespaces"
     return 0
   fi
 

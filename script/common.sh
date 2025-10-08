@@ -92,6 +92,13 @@ is_codespace() {
   [[ -n ${CODESPACES:-} ]] || [[ -n ${GITHUB_CODESPACE_TOKEN:-} ]]
 }
 
+# Detect if running in a GitHub Codespace for the github/github repository
+# Returns 0 (true) if in github/github Codespace, 1 (false) otherwise
+# Checks GITHUB_REPOSITORY environment variable (case-insensitive)
+is_gh_codespace() {
+  is_codespace && [[ ${GITHUB_REPOSITORY,,} == "github/github" ]]
+}
+
 # Y/N prompt. Returns 0 for yes, 1 for no.
 # Usage: if confirm "Proceed?"; then ...
 # In non-interactive mode, automatically returns the default value
