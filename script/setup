@@ -179,6 +179,12 @@ set_default_shell() {
 install_1password_cli() {
   print_header "Installing 1Password CLI"
 
+  # Skip 1Password installation in github/github Codespaces only
+  if is_gh_codespace; then
+    print_status "Skipping 1Password CLI installation in github/github Codespaces"
+    return 0
+  fi
+
   local onepassword_script="$script_dir/install-1password-cli"
 
   if [[ -f $onepassword_script ]]; then
@@ -272,7 +278,7 @@ stow_dotfiles() {
   print_status "Dotfiles directory detected, proceeding with stow..."
 
   # Check if any files would conflict
-  if stow --simulate --no --verbose=2 --target="$HOME" . 2>&1 | grep -q "would conflict"; then
+  if stow --simulate --no --verbose=2 --target="$HOME" . 2>&1 | grep -qi "conflict"; then
     print_warning "Some dotfiles already exist and would conflict"
 
     # In non-interactive mode, always backup and proceed
