@@ -290,6 +290,9 @@ alias reload="exec $SHELL -l"
 # zoxide
 eval "$(zoxide init zsh --cmd cd)"
 
+# rbenv
+eval "$(rbenv init - --no-rehash zsh)"
+
 # fnm
 eval "$(fnm env --use-on-cd --shell zsh)"
 
