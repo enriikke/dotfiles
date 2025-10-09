@@ -101,7 +101,7 @@ stow_package() {
   cd "$dotfiles_dir"
 
   # Verify package exists
-  if [[ ! -e "$package" ]]; then
+  if [[ ! -e $package ]]; then
     print_error "Package not found: $package"
     return 1
   fi
