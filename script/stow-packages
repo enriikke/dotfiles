@@ -1,0 +1,205 @@
+#!/usr/bin/env bash
+
+set -e
+
+# Source shared helpers
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=script/common.sh
+. "$script_dir/common.sh"
+
+# Initialize homebrew environment to ensure stow is available
+init_homebrew() {
+  if command -v brew >/dev/null 2>&1; then
+    return 0
+  fi
+
+  print_status "Initializing Homebrew environment..."
+
+  if is_macos; then
+    if [[ -x "/opt/homebrew/bin/brew" ]]; then
+      # macOS Apple Silicon
+      eval "$(/opt/homebrew/bin/brew shellenv)"
+    elif [[ -x "/usr/local/bin/brew" ]]; then
+      # macOS Intel
+      eval "$(/usr/local/bin/brew shellenv)"
+    fi
+  else
+    # Linux
+    if [[ -x "/home/linuxbrew/.linuxbrew/bin/brew" ]]; then
+      eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+    fi
+  fi
+
+  if ! command -v brew >/dev/null 2>&1; then
+    print_error "Homebrew not found. Please install it first by running ./script/setup"
+    exit 1
+  fi
+}
+
+# Default packages to stow
+DEFAULT_PACKAGES=(
+  ".config/zsh"
+  ".config/nvim"
+)
+
+# Backup conflicting files for a specific package
+backup_conflicting_files() {
+  local package="$1"
+  local backup_dir
+  backup_dir="$HOME/.dotfiles_backup_$(date +%Y%m%d_%H%M%S)"
+  local conflicts_found=false
+
+  print_status "Checking for conflicts with $package..."
+
+  # Check what files would be created by stow
+  local stow_output
+  stow_output=$(stow --simulate --no --verbose=2 --target="$HOME" "$package" 2>&1 || true)
+
+  if echo "$stow_output" | grep -qi "conflict"; then
+    print_warning "Found conflicts with $package"
+
+    # Extract conflicting files from stow output
+    local conflicting_files
+    conflicting_files=$(echo "$stow_output" | grep -i "existing target" | sed 's/.*existing target is //' | sed 's/ .*//')
+
+    for target_file in $conflicting_files; do
+      local target_path="$HOME/$target_file"
+
+      if [[ -e $target_path || -L $target_path ]]; then
+        if ! $conflicts_found; then
+          conflicts_found=true
+          mkdir -p "$backup_dir"
+          print_status "Created backup directory: $backup_dir"
+        fi
+
+        print_status "Backing up existing $target_file..."
+        # Create parent directories in backup if needed
+        local parent_dir
+        parent_dir=$(dirname "$backup_dir/$target_file")
+        mkdir -p "$parent_dir"
+
+        mv "$target_path" "$backup_dir/$target_file"
+        print_status "✓ Moved $target_file to backup"
+      fi
+    done
+
+    if $conflicts_found; then
+      print_status "✓ Conflicting files backed up to: $backup_dir"
+    fi
+  else
+    print_status "✓ No conflicts found for $package"
+  fi
+}
+
+# Stow a specific package
+stow_package() {
+  local package="$1"
+  local dotfiles_dir
+  dotfiles_dir="$(cd "$script_dir/.." && pwd)"
+
+  # Change to dotfiles directory
+  cd "$dotfiles_dir"
+
+  # Verify package exists
+  if [[ ! -e "$package" ]]; then
+    print_error "Package not found: $package"
+    return 1
+  fi
+
+  print_status "Stowing $package..."
+
+  # Check for conflicts
+  if stow --simulate --no --verbose=2 --target="$HOME" "$package" 2>&1 | grep -qi "conflict"; then
+    if is_non_interactive; then
+      # In non-interactive mode, automatically backup
+      print_status "Non-interactive mode: automatically backing up conflicting files"
+      backup_conflicting_files "$package"
+    else
+      # In interactive mode, ask user
+      echo ""
+      if confirm "Package $package has conflicts. Backup existing files and continue?" y; then
+        backup_conflicting_files "$package"
+      else
+        print_warning "Skipping $package"
+        return 0
+      fi
+    fi
+  fi
+
+  # Run stow
+  if stow --target="$HOME" "$package"; then
+    print_status "✓ Successfully stowed $package"
+  else
+    print_error "Failed to stow $package"
+    return 1
+  fi
+}
+
+# Show usage information
+usage() {
+  cat <<EOF
+Usage: $(basename "$0") [PACKAGE...]
+
+Stow specific dotfile packages to your home directory.
+
+If no packages are specified, the following default packages will be stowed:
+$(printf '  - %s\n' "${DEFAULT_PACKAGES[@]}")
+
+Examples:
+  $(basename "$0")                    # Stow default packages (zsh and nvim)
+  $(basename "$0") .config/zsh       # Stow only zsh config
+  $(basename "$0") .config/nvim .config/zsh  # Stow multiple packages
+
+Note: This script loads Homebrew into the environment to ensure stow is available.
+EOF
+}
+
+# Main function
+main() {
+  print_header "Selective Dotfiles Stowing"
+
+  # Initialize homebrew to get stow
+  init_homebrew
+
+  # Check if stow is available
+  if ! command -v stow >/dev/null 2>&1; then
+    print_error "stow not found. Please install it first by running ./script/setup"
+    exit 1
+  fi
+
+  # Determine which packages to stow
+  local packages=()
+  if [[ $# -eq 0 ]]; then
+    # No arguments, use defaults
+    packages=("${DEFAULT_PACKAGES[@]}")
+    print_status "No packages specified, using defaults: ${packages[*]}"
+  else
+    # Use provided arguments
+    packages=("$@")
+  fi
+
+  # Stow each package
+  local failed=0
+  for package in "${packages[@]}"; do
+    if ! stow_package "$package"; then
+      ((failed++))
+    fi
+  done
+
+  echo ""
+  if [[ $failed -eq 0 ]]; then
+    print_status "🎉 All packages successfully stowed!"
+  else
+    print_warning "$failed package(s) failed to stow"
+    exit 1
+  fi
+}
+
+# Show usage if --help or -h is passed
+if [[ $# -eq 1 && ($1 == "--help" || $1 == "-h") ]]; then
+  usage
+  exit 0
+fi
+
+# Run main function
+main "$@"
