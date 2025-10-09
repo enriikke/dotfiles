@@ -265,6 +265,13 @@ backup_conflicting_files() {
 stow_dotfiles() {
   print_header "Setting up Dotfiles"
 
+  # Skip stowing in Codespaces
+  if is_codespace; then
+    print_status "Running in Codespaces - skipping automatic stowing"
+    print_status "To stow specific packages later, use: ./script/stow-packages"
+    return 0
+  fi
+
   # Check if we're in a dotfiles directory
   if [[ ! -f ".stowrc" || ! -f ".zshrc" ]]; then
     print_warning "Not in a dotfiles directory with .stowrc and .zshrc"
