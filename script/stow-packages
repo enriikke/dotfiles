@@ -2,6 +2,10 @@
 
 set -e
 
+# Fix locale issues (common in Codespaces) to silence perl warnings from stow
+export LC_ALL=C
+export LANG=C
+
 # Source shared helpers
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=script/common.sh
@@ -37,33 +41,47 @@ init_homebrew() {
 }
 
 # Default packages to stow
+# Format: "package_name" for top-level dirs, or "parent:subdir" for nested dirs
 DEFAULT_PACKAGES=(
-  ".config/zsh"
-  ".config/nvim"
+  ".config:zsh"
+  ".config:nvim"
 )
 
-# Backup conflicting files for a specific package
+# Backup conflicting files for a specific package or subdirectory
 backup_conflicting_files() {
   local package="$1"
+  local subdir="${2:-}"
   local backup_dir
   backup_dir="$HOME/.dotfiles_backup_$(date +%Y%m%d_%H%M%S)"
   local conflicts_found=false
 
-  print_status "Checking for conflicts with $package..."
+  local display_name="$package"
+  [[ -n $subdir ]] && display_name="$package/$subdir"
+
+  print_status "Checking for conflicts with $display_name..."
 
   # Check what files would be created by stow
   local stow_output
-  stow_output=$(stow --simulate --no --verbose=2 --target="$HOME" "$package" 2>&1 || true)
+  if [[ -n $subdir ]]; then
+    stow_output=$(stow --simulate --no --verbose=2 --target="$HOME/$package" --dir=. "$subdir" 2>&1 || true)
+  else
+    stow_output=$(stow --simulate --no --verbose=2 --target="$HOME" "$package" 2>&1 || true)
+  fi
 
   if echo "$stow_output" | grep -qi "conflict"; then
-    print_warning "Found conflicts with $package"
+    print_warning "Found conflicts with $display_name"
 
     # Extract conflicting files from stow output
     local conflicting_files
     conflicting_files=$(echo "$stow_output" | grep -i "existing target" | sed 's/.*existing target is //' | sed 's/ .*//')
 
     for target_file in $conflicting_files; do
-      local target_path="$HOME/$target_file"
+      local target_path
+      if [[ -n $subdir ]]; then
+        target_path="$HOME/$package/$target_file"
+      else
+        target_path="$HOME/$target_file"
+      fi
 
       if [[ -e $target_path || -L $target_path ]]; then
         if ! $conflicts_found; then
@@ -87,15 +105,25 @@ backup_conflicting_files() {
       print_status "✓ Conflicting files backed up to: $backup_dir"
     fi
   else
-    print_status "✓ No conflicts found for $package"
+    print_status "✓ No conflicts found for $display_name"
   fi
 }
 
-# Stow a specific package
+# Stow a specific package or package:subdir
 stow_package() {
-  local package="$1"
+  local input="$1"
+  local package subdir
   local dotfiles_dir
   dotfiles_dir="$(cd "$script_dir/.." && pwd)"
+
+  # Parse input - check if it contains a colon (parent:subdir format)
+  if [[ $input == *":"* ]]; then
+    package="${input%%:*}"
+    subdir="${input#*:}"
+  else
+    package="$input"
+    subdir=""
+  fi
 
   # Change to dotfiles directory
   cd "$dotfiles_dir"
@@ -106,32 +134,76 @@ stow_package() {
     return 1
   fi
 
-  print_status "Stowing $package..."
+  # If stowing a subdirectory, verify it exists
+  if [[ -n $subdir ]]; then
+    if [[ ! -e "$package/$subdir" ]]; then
+      print_error "Subdirectory not found: $package/$subdir"
+      return 1
+    fi
 
-  # Check for conflicts
-  if stow --simulate --no --verbose=2 --target="$HOME" "$package" 2>&1 | grep -qi "conflict"; then
-    if is_non_interactive; then
-      # In non-interactive mode, automatically backup
-      print_status "Non-interactive mode: automatically backing up conflicting files"
-      backup_conflicting_files "$package"
-    else
-      # In interactive mode, ask user
-      echo ""
-      if confirm "Package $package has conflicts. Backup existing files and continue?" y; then
-        backup_conflicting_files "$package"
+    local display_name="$package/$subdir"
+    print_status "Stowing $display_name..."
+
+    # Ensure target parent directory exists
+    mkdir -p "$HOME/$package"
+
+    # Change to parent directory for stowing subdirectory
+    cd "$package"
+
+    # Check for conflicts
+    if stow --simulate --no --verbose=2 --target="$HOME/$package" "$subdir" 2>&1 | grep -qi "conflict"; then
+      if is_non_interactive; then
+        print_status "Non-interactive mode: automatically backing up conflicting files"
+        cd "$dotfiles_dir"
+        backup_conflicting_files "$package" "$subdir"
+        cd "$package"
       else
-        print_warning "Skipping $package"
-        return 0
+        echo ""
+        if confirm "Package $display_name has conflicts. Backup existing files and continue?" y; then
+          cd "$dotfiles_dir"
+          backup_conflicting_files "$package" "$subdir"
+          cd "$package"
+        else
+          print_warning "Skipping $display_name"
+          return 0
+        fi
       fi
     fi
-  fi
 
-  # Run stow
-  if stow --target="$HOME" "$package"; then
-    print_status "✓ Successfully stowed $package"
+    # Run stow for subdirectory
+    if stow --target="$HOME/$package" "$subdir"; then
+      print_status "✓ Successfully stowed $display_name"
+    else
+      print_error "Failed to stow $display_name"
+      return 1
+    fi
   else
-    print_error "Failed to stow $package"
-    return 1
+    # Stowing a top-level package
+    print_status "Stowing $package..."
+
+    # Check for conflicts
+    if stow --simulate --no --verbose=2 --target="$HOME" "$package" 2>&1 | grep -qi "conflict"; then
+      if is_non_interactive; then
+        print_status "Non-interactive mode: automatically backing up conflicting files"
+        backup_conflicting_files "$package"
+      else
+        echo ""
+        if confirm "Package $package has conflicts. Backup existing files and continue?" y; then
+          backup_conflicting_files "$package"
+        else
+          print_warning "Skipping $package"
+          return 0
+        fi
+      fi
+    fi
+
+    # Run stow
+    if stow --target="$HOME" "$package"; then
+      print_status "✓ Successfully stowed $package"
+    else
+      print_error "Failed to stow $package"
+      return 1
+    fi
   fi
 }
 
@@ -145,10 +217,14 @@ Stow specific dotfile packages to your home directory.
 If no packages are specified, the following default packages will be stowed:
 $(printf '  - %s\n' "${DEFAULT_PACKAGES[@]}")
 
+Package Format:
+  - For top-level directories: package_name (e.g., .zshrc)
+  - For subdirectories: parent:subdir (e.g., .config:zsh)
+
 Examples:
   $(basename "$0")                    # Stow default packages (zsh and nvim)
-  $(basename "$0") .config/zsh       # Stow only zsh config
-  $(basename "$0") .config/nvim .config/zsh  # Stow multiple packages
+  $(basename "$0") .config:zsh        # Stow only zsh config from .config
+  $(basename "$0") .config:nvim .config:zsh  # Stow multiple subdirectories
 
 Note: This script loads Homebrew into the environment to ensure stow is available.
 EOF
