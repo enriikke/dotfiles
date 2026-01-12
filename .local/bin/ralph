@@ -83,44 +83,41 @@ fi
 PROJECT_HASH=$(echo "$PRD_FILE" | shasum | cut -c1-12)
 PROJECT_DIR="$RALPH_HOME/projects/$PROJECT_HASH"
 PROGRESS_FILE="$PROJECT_DIR/progress.txt"
-LAST_BRANCH_FILE="$PROJECT_DIR/last-branch"
-ARCHIVE_DIR="$RALPH_HOME/archives"
+LOCK_FILE="$PROJECT_DIR/lock"
 
 mkdir -p "$PROJECT_DIR"
-mkdir -p "$ARCHIVE_DIR"
 
 # Store the PRD path for reference
 echo "$PRD_FILE" > "$PROJECT_DIR/prd-path"
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Archive previous run if branch changed
+# Lock file to prevent concurrent runs
 # ═══════════════════════════════════════════════════════════════════════════
 
-if [ -f "$LAST_BRANCH_FILE" ]; then
-  CURRENT_BRANCH=$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || echo "")
-  LAST_BRANCH=$(cat "$LAST_BRANCH_FILE" 2>/dev/null || echo "")
+cleanup() {
+  rm -f "$LOCK_FILE"
+}
 
-  if [ -n "$CURRENT_BRANCH" ] && [ -n "$LAST_BRANCH" ] && [ "$CURRENT_BRANCH" != "$LAST_BRANCH" ]; then
-    DATE=$(date +%Y-%m-%d)
-    FOLDER_NAME=$(echo "$LAST_BRANCH" | sed 's|^ralph/||' | sed 's|/|_|g')
-    ARCHIVE_FOLDER="$ARCHIVE_DIR/$DATE-$FOLDER_NAME"
-
-    print_status "Archiving previous run: $LAST_BRANCH"
-    mkdir -p "$ARCHIVE_FOLDER"
-    cp "$PRD_FILE" "$ARCHIVE_FOLDER/prd.json" 2>/dev/null || true
-    cp "$PROGRESS_FILE" "$ARCHIVE_FOLDER/progress.txt" 2>/dev/null || true
-    print_status "Archived to: $ARCHIVE_FOLDER"
-
-    # Reset progress file for new run
-    rm -f "$PROGRESS_FILE"
+if [ -f "$LOCK_FILE" ]; then
+  LOCK_PID=$(cat "$LOCK_FILE" 2>/dev/null || echo "")
+  if [ -n "$LOCK_PID" ] && kill -0 "$LOCK_PID" 2>/dev/null; then
+    print_error "Another ralph instance is already running on this spec (PID: $LOCK_PID)"
+    print_error "If this is stale, remove: $LOCK_FILE"
+    exit 1
+  else
+    print_warning "Removing stale lock file"
+    rm -f "$LOCK_FILE"
   fi
 fi
 
-# Track current branch
+echo $$ > "$LOCK_FILE"
+trap cleanup EXIT
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Initialize progress file
+# ═══════════════════════════════════════════════════════════════════════════
+
 CURRENT_BRANCH=$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || echo "")
-if [ -n "$CURRENT_BRANCH" ]; then
-  echo "$CURRENT_BRANCH" > "$LAST_BRANCH_FILE"
-fi
 
 # Initialize progress file if it doesn't exist
 if [ ! -f "$PROGRESS_FILE" ]; then
