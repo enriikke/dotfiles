@@ -2,10 +2,14 @@
 # Ralph Wiggum - Long-running AI agent loop
 # Named after the Simpsons character who never stops trying
 #
-# Usage: ralph <prd-file> [max-iterations]
+# Usage:
+#   ralph <spec.md> [max-iterations]  Run the autonomous loop
+#   ralph --new [feature-name]        Interactive spec authoring
+#   ralph --status                    Show status of all specs
 #
 # Environment variables:
 #   RALPH_AGENT_CMD - Command to invoke the agent (default: copilot)
+#   RALPH_HOME      - Ralph data directory (default: ~/.ralph)
 
 set -e
 
@@ -21,6 +25,8 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
 NC='\033[0m'
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -47,16 +53,213 @@ print_error() {
 }
 
 usage() {
-  echo "Usage: ralph <prd-file> [max-iterations]"
+  echo "Usage:"
+  echo "  ralph <spec.md> [max-iterations]  Run the autonomous loop"
+  echo "  ralph --new [feature-name]        Interactive spec authoring"
+  echo "  ralph --status                    Show status of all specs"
   echo ""
   echo "Arguments:"
-  echo "  prd-file        Path to the PRD/spec JSON file"
+  echo "  spec.md         Path to the markdown spec file"
   echo "  max-iterations  Maximum loop iterations (default: 100)"
+  echo "  feature-name    Name for the new spec file (optional)"
   echo ""
   echo "Environment variables:"
   echo "  RALPH_AGENT_CMD  Agent command (default: copilot)"
   echo "  RALPH_HOME       Ralph data directory (default: ~/.ralph)"
   exit 1
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Status command
+# ═══════════════════════════════════════════════════════════════════════════
+
+show_status() {
+  print_header "Ralph Status"
+
+  if [ ! -d "$RALPH_HOME/projects" ]; then
+    echo "No specs found."
+    exit 0
+  fi
+
+  for project_dir in "$RALPH_HOME/projects"/*/; do
+    [ -d "$project_dir" ] || continue
+
+    if [ -f "$project_dir/prd-path" ]; then
+      SPEC_PATH=$(cat "$project_dir/prd-path")
+      PRD_FILE="$project_dir/prd.json"
+      PROGRESS_FILE="$project_dir/progress.txt"
+      LOCK_FILE="$project_dir/lock"
+
+      # Check if running
+      RUNNING=""
+      if [ -f "$LOCK_FILE" ]; then
+        LOCK_PID=$(cat "$LOCK_FILE" 2>/dev/null || echo "")
+        if [ -n "$LOCK_PID" ] && kill -0 "$LOCK_PID" 2>/dev/null; then
+          RUNNING=" ${CYAN}[RUNNING]${NC}"
+        fi
+      fi
+
+      echo ""
+      echo -e "${BOLD}$SPEC_PATH${NC}$RUNNING"
+
+      if [ -f "$PRD_FILE" ]; then
+        TOTAL=$(jq '.userStories | length' "$PRD_FILE" 2>/dev/null || echo "0")
+        DONE=$(jq '[.userStories[] | select(.passes == true)] | length' "$PRD_FILE" 2>/dev/null || echo "0")
+        BRANCH=$(jq -r '.branchName // "n/a"' "$PRD_FILE" 2>/dev/null || echo "n/a")
+
+        echo -e "  Branch: ${CYAN}$BRANCH${NC}"
+        echo -e "  Progress: ${GREEN}$DONE${NC}/${TOTAL} stories complete"
+
+        # Show incomplete stories
+        if [ "$DONE" -lt "$TOTAL" ]; then
+          echo "  Remaining:"
+          jq -r '.userStories[] | select(.passes == false) | "    - \(.id): \(.title)"' "$PRD_FILE" 2>/dev/null
+        fi
+      else
+        echo "  (not yet converted to JSON)"
+      fi
+    fi
+  done
+
+  echo ""
+  exit 0
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# New spec command (interactive)
+# ═══════════════════════════════════════════════════════════════════════════
+
+new_spec() {
+  FEATURE_NAME="${1:-}"
+
+  print_header "New Spec - Interactive Mode"
+
+  if [ -n "$FEATURE_NAME" ]; then
+    SPEC_FILE="docs/$FEATURE_NAME.md"
+    print_status "Will save to: $SPEC_FILE"
+  else
+    print_status "The agent will help you name the spec file."
+  fi
+
+  echo ""
+
+  # Generate the spec authoring prompt
+  PROMPT=$(cat << 'PROMPT_END'
+You are a product manager helping to create a feature specification. Your job is to interview the user, understand what they want to build, and create a well-structured spec document.
+
+# Your Task
+
+1. Ask what feature or change they want to build (if not already clear)
+2. Ask 3-5 essential clarifying questions to understand:
+   - **Problem/Goal:** What problem does this solve? Why build it?
+   - **Core Functionality:** What are the key user actions?
+   - **Scope/Boundaries:** What should it NOT do?
+   - **Success Criteria:** How do we know it's done?
+
+3. Format questions with lettered options for quick responses:
+   ```
+   1. What is the primary goal?
+      A. Improve user experience
+      B. Add new capability
+      C. Fix existing pain point
+      D. Other: [please specify]
+   ```
+   This lets users respond with "1A, 2C, 3B" quickly.
+
+4. After gathering answers, generate the spec and save it.
+
+# Spec Format
+
+Save to: SPEC_FILE_PLACEHOLDER (create docs/ directory if needed)
+
+```markdown
+# [Feature Name]
+
+Branch: ralph/[feature-name-kebab-case]
+
+## Overview
+Brief description of the feature and the problem it solves.
+
+## Goals
+- Specific, measurable objectives
+- What success looks like
+
+## Stories
+
+### [Short descriptive title]
+As a [user], I want [feature] so that [benefit].
+
+**Acceptance Criteria:**
+- [ ] Specific, verifiable criterion
+- [ ] Another criterion
+- [ ] Typecheck passes
+- [ ] [For UI changes] Verify in browser
+
+### [Next story title]
+...
+
+## Non-Goals
+What this feature will NOT include. Critical for scope.
+
+## Open Questions
+Any remaining questions or decisions to be made.
+```
+
+# Story Sizing Rules
+
+Each story must be completable in ONE iteration (one context window). If a story is too big, the agent will fail.
+
+**Right-sized stories:**
+- Add a database column and migration
+- Add a UI component to an existing page
+- Add a filter dropdown to a list
+- Update a server action with new logic
+
+**Too big (split these):**
+- "Build the entire dashboard" → Split into: schema, queries, components, filters
+- "Add authentication" → Split into: schema, middleware, login UI, sessions
+
+**Rule of thumb:** If you can't describe it in 2-3 sentences, it's too big.
+
+# Story Ordering
+
+Order stories by dependency:
+1. Schema/database changes first
+2. Backend/server logic second
+3. UI components that use backend third
+4. Dashboard/aggregate views last
+
+# Acceptance Criteria Rules
+
+Must be VERIFIABLE, not vague.
+
+**Good:** "Button shows confirmation dialog before deleting"
+**Bad:** "Works correctly" or "Good UX"
+
+Always include:
+- "Typecheck passes" for every story
+- "Verify in browser" for any UI changes
+
+# Important
+
+- Do NOT implement anything - just create the spec
+- Ask questions FIRST, then generate the spec
+- Keep stories small and focused
+- Be explicit and unambiguous
+PROMPT_END
+)
+
+  # Replace placeholder with actual path if provided
+  if [ -n "$FEATURE_NAME" ]; then
+    PROMPT=$(echo "$PROMPT" | sed "s|SPEC_FILE_PLACEHOLDER|$SPEC_FILE|g")
+  else
+    PROMPT=$(echo "$PROMPT" | sed "s|SPEC_FILE_PLACEHOLDER|docs/[feature-name].md (ask the user what to name it)|g")
+  fi
+
+  # Run the agent interactively
+  echo "$PROMPT" | $AGENT_CMD
+
+  exit 0
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -67,11 +270,20 @@ if [ -z "$1" ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
   usage
 fi
 
-PRD_FILE="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
+if [ "$1" = "--status" ]; then
+  show_status
+fi
+
+if [ "$1" = "--new" ]; then
+  new_spec "$2"
+fi
+
+# Main loop mode - expect a spec file
+SPEC_FILE="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 MAX_ITERATIONS=${2:-100}
 
-if [ ! -f "$PRD_FILE" ]; then
-  print_error "PRD file not found: $PRD_FILE"
+if [ ! -f "$SPEC_FILE" ]; then
+  print_error "Spec file not found: $SPEC_FILE"
   exit 1
 fi
 
@@ -79,16 +291,17 @@ fi
 # Setup project-specific paths in ~/.ralph
 # ═══════════════════════════════════════════════════════════════════════════
 
-# Use a hash of the PRD path to create a unique project folder
-PROJECT_HASH=$(echo "$PRD_FILE" | shasum | cut -c1-12)
+PROJECT_HASH=$(echo "$SPEC_FILE" | shasum | cut -c1-12)
 PROJECT_DIR="$RALPH_HOME/projects/$PROJECT_HASH"
+PRD_FILE="$PROJECT_DIR/prd.json"
 PROGRESS_FILE="$PROJECT_DIR/progress.txt"
+SPEC_HASH_FILE="$PROJECT_DIR/spec-hash"
 LOCK_FILE="$PROJECT_DIR/lock"
 
 mkdir -p "$PROJECT_DIR"
 
-# Store the PRD path for reference
-echo "$PRD_FILE" > "$PROJECT_DIR/prd-path"
+# Store the spec path for reference
+echo "$SPEC_FILE" > "$PROJECT_DIR/prd-path"
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Lock file to prevent concurrent runs
@@ -114,24 +327,115 @@ echo $$ > "$LOCK_FILE"
 trap cleanup EXIT
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Convert markdown spec to JSON if needed
+# ═══════════════════════════════════════════════════════════════════════════
+
+CURRENT_SPEC_HASH=$(shasum "$SPEC_FILE" | cut -c1-40)
+STORED_SPEC_HASH=""
+if [ -f "$SPEC_HASH_FILE" ]; then
+  STORED_SPEC_HASH=$(cat "$SPEC_HASH_FILE")
+fi
+
+if [ ! -f "$PRD_FILE" ] || [ "$CURRENT_SPEC_HASH" != "$STORED_SPEC_HASH" ]; then
+  print_header "Converting Spec to JSON"
+
+  if [ -f "$PRD_FILE" ]; then
+    print_status "Spec changed, regenerating prd.json..."
+  else
+    print_status "Generating prd.json from spec..."
+  fi
+
+  CONVERT_PROMPT=$(cat << 'CONVERT_END'
+Convert the following markdown spec into a prd.json file.
+
+# Input Spec
+@SPEC_FILE_PLACEHOLDER
+
+# Output Format
+
+Write to: PRD_FILE_PLACEHOLDER
+
+```json
+{
+  "project": "[Project name - infer from spec or directory]",
+  "branchName": "[From spec, or generate as ralph/feature-name]",
+  "description": "[Brief description from spec overview]",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "[Story title]",
+      "description": "As a [user], I want [feature] so that [benefit]",
+      "acceptanceCriteria": [
+        "Criterion 1",
+        "Criterion 2",
+        "Typecheck passes"
+      ],
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
+```
+
+# Rules
+
+1. Each story from the spec becomes one JSON entry
+2. IDs are sequential: US-001, US-002, etc.
+3. Order stories by dependency (database → backend → UI)
+4. All stories start with `passes: false` and empty `notes`
+5. Always include "Typecheck passes" in acceptance criteria
+6. For UI stories, include "Verify in browser"
+7. Do NOT include a priority field - Ralph decides order dynamically
+
+# Story Size Check
+
+If any story seems too large (would take multiple context windows), split it:
+- "Build dashboard" → separate stories for schema, queries, components
+- "Add auth" → separate for schema, middleware, UI, sessions
+
+Each story must be completable in ONE focused iteration.
+
+# Important
+
+- Output ONLY the JSON file, no other commentary
+- Ensure valid JSON syntax
+- Preserve the intent and acceptance criteria from the spec
+CONVERT_END
+)
+
+  CONVERT_PROMPT=$(echo "$CONVERT_PROMPT" | sed "s|SPEC_FILE_PLACEHOLDER|$SPEC_FILE|g" | sed "s|PRD_FILE_PLACEHOLDER|$PRD_FILE|g")
+
+  # Run conversion
+  echo "$CONVERT_PROMPT" | $AGENT_CMD > /dev/null 2>&1
+
+  if [ ! -f "$PRD_FILE" ]; then
+    print_error "Failed to generate prd.json"
+    exit 1
+  fi
+
+  # Store the hash
+  echo "$CURRENT_SPEC_HASH" > "$SPEC_HASH_FILE"
+  print_status "Generated: $PRD_FILE"
+fi
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Initialize progress file
 # ═══════════════════════════════════════════════════════════════════════════
 
 CURRENT_BRANCH=$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || echo "")
 
-# Initialize progress file if it doesn't exist
 if [ ! -f "$PROGRESS_FILE" ]; then
   cat > "$PROGRESS_FILE" << EOF
 # Ralph Progress Log
 Started: $(date)
-PRD: $PRD_FILE
+Spec: $SPEC_FILE
 Branch: ${CURRENT_BRANCH:-"(not specified)"}
 ---
 EOF
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════
-# The Prompt (embedded)
+# The Loop Prompt
 # ═══════════════════════════════════════════════════════════════════════════
 
 generate_prompt() {
@@ -143,78 +447,61 @@ You are an autonomous coding agent working on a software project.
 1. Read the PRD at @PRD_FILE_PLACEHOLDER
 2. Read the progress log at @PROGRESS_FILE_PLACEHOLDER (check Codebase Patterns section first)
 3. Check you're on the correct branch from PRD `branchName`. If not, check it out or create from main.
-4. Pick the **highest priority** user story where `passes: false`
-5. Implement that single user story.
-6. Run quality checks (e.g., typecheck, lint, test - use whatever your project requires)
-7. Update AGENTS.md files if you discover reusable patterns (see below)
-8. If checks pass, commit ALL changes with message: `feat: [Story ID] - [Story Title]`
-9. Update the PRD to set `passes: true` for the completed story
-10. Append your progress to @PROGRESS_FILE_PLACEHOLDER
+4. Look at all stories where `passes: false`. Analyze dependencies and pick the most logical next story:
+   - Database/schema changes before backend logic
+   - Backend logic before UI components
+   - Core features before enhancements
+5. Implement that single user story
+6. Run quality checks (typecheck, lint, test - whatever the project uses)
+7. If checks pass, commit ALL changes with message: `feat: [Story ID] - [Story Title]`
+8. Update the PRD to set `passes: true` for the completed story
+9. Append your progress to @PROGRESS_FILE_PLACEHOLDER
 
 ## Progress Report Format
 
-APPEND to the progress file (never replace, always append):
+APPEND to the progress file (never replace):
 ```
-## [Date/Time] - [Story ID]
+## [Date/Time] - [Story ID]: [Title]
 - What was implemented
 - Files changed
-- **Learnings for future iterations:**
-  - Patterns discovered (e.g., "this codebase uses X for Y")
-  - Gotchas encountered (e.g., "don't forget to update Z when changing W")
-  - Useful context (e.g., "the evaluation panel is in component X")
+- **Learnings:**
+  - Patterns discovered
+  - Gotchas encountered
 ---
 ```
 
-The learnings section is critical - it helps future iterations avoid repeating mistakes.
+## Codebase Patterns
 
-## Consolidate Patterns
-
-If you discover a **reusable pattern** that future iterations should know, add it to the `## Codebase Patterns` section at the TOP of the progress file (create it if it doesn't exist):
+If you discover a reusable pattern, add it to the `## Codebase Patterns` section at the TOP of the progress file:
 
 ```
 ## Codebase Patterns
-- Example: Use `sql<number>` template for aggregations
-- Example: Always use `IF NOT EXISTS` for migrations
-- Example: Export types from actions.ts for UI components
+- Use X for Y
+- Always do Z when changing W
 ```
-
-Only add patterns that are **general and reusable**, not story-specific details.
-
-## Update AGENTS.md Files
-
-Before committing, check if any edited files have learnings worth preserving in nearby AGENTS.md files:
-
-1. **Identify directories with edited files**
-2. **Check for existing AGENTS.md** in those directories or parent directories
-3. **Add valuable learnings** - API patterns, gotchas, dependencies, testing approaches
-
-**Do NOT add:**
-- Story-specific implementation details
-- Temporary debugging notes
-- Information already in the progress file
 
 ## Quality Requirements
 
-- ALL commits must pass your project's quality checks (typecheck, lint, test)
+- ALL commits must pass quality checks
 - Do NOT commit broken code
 - Keep changes focused and minimal
 - Follow existing code patterns
 
 ## Stop Condition
 
-After completing a user story, check if ALL stories have `passes: true`.
+After completing a story, check if ALL stories have `passes: true`.
 
-If ALL stories are complete and passing, reply with:
+If ALL complete, reply with:
 <promise>COMPLETE</promise>
 
-If there are still stories with `passes: false`, end your response normally.
+If stories remain with `passes: false`, end your response normally.
 
 ## Important
 
 - Work on ONE story per iteration
-- Commit frequently
+- Commit after each story
 - Keep CI green
-- Read the Codebase Patterns section in the progress file before starting
+- Read Codebase Patterns before starting
 PROMPT_END
 }
 
@@ -222,13 +509,19 @@ PROMPT_END
 # Main loop
 # ═══════════════════════════════════════════════════════════════════════════
 
-WORKING_DIR=$(dirname "$PRD_FILE")
+WORKING_DIR=$(dirname "$SPEC_FILE")
 
 print_header "Starting Ralph Wiggum Loop"
+print_status "Spec: $SPEC_FILE"
 print_status "PRD: $PRD_FILE"
 print_status "Progress: $PROGRESS_FILE"
 print_status "Max iterations: $MAX_ITERATIONS"
 print_status "Agent: $AGENT_CMD"
+
+# Show current status
+TOTAL=$(jq '.userStories | length' "$PRD_FILE" 2>/dev/null || echo "0")
+DONE=$(jq '[.userStories[] | select(.passes == true)] | length' "$PRD_FILE" 2>/dev/null || echo "0")
+print_status "Progress: $DONE/$TOTAL stories complete"
 echo ""
 
 cd "$WORKING_DIR"
@@ -245,10 +538,9 @@ for i in $(seq 1 $MAX_ITERATIONS); do
   # Check for completion signal
   if echo "$OUTPUT" | grep -q "<promise>COMPLETE</promise>"; then
     echo ""
-    print_status "🎉 Ralph completed all tasks!"
+    print_status "Ralph completed all tasks!"
     print_status "Finished at iteration $i of $MAX_ITERATIONS"
 
-    # Log completion
     cat >> "$PROGRESS_FILE" << EOF
 
 ## COMPLETED - $(date)
@@ -258,12 +550,15 @@ EOF
     exit 0
   fi
 
+  # Show updated progress
+  DONE=$(jq '[.userStories[] | select(.passes == true)] | length' "$PRD_FILE" 2>/dev/null || echo "0")
+  print_status "Progress: $DONE/$TOTAL stories complete"
   print_status "Iteration $i complete. Continuing in 2 seconds..."
   sleep 2
 done
 
 echo ""
 print_warning "Ralph reached max iterations ($MAX_ITERATIONS) without completing."
-print_warning "Progress saved to: $PROGRESS_FILE"
-print_warning "Continue with: ralph $PRD_FILE $((MAX_ITERATIONS * 2))"
+print_warning "Progress: $DONE/$TOTAL stories complete"
+print_warning "Continue with: ralph $SPEC_FILE $((MAX_ITERATIONS * 2))"
 exit 1
