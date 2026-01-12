@@ -256,7 +256,7 @@ PROMPT_END
   fi
 
   # Run the agent interactively
-  echo "$PROMPT" | $AGENT_CMD
+  $AGENT_CMD -i "$PROMPT"
 
   exit 0
 }
