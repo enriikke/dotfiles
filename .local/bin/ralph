@@ -144,7 +144,7 @@ new_spec() {
   echo ""
 
   # Generate the spec authoring prompt
-  PROMPT=$(cat << 'PROMPT_END'
+  read -r -d '' PROMPT << 'PROMPT_END' || true
 You are a product manager helping to create a feature specification. Your job is to interview the user, understand what they want to build, and create a well-structured spec document.
 
 # Your Task
@@ -247,7 +247,6 @@ Always include:
 - Keep stories small and focused
 - Be explicit and unambiguous
 PROMPT_END
-)
 
   # Replace placeholder with actual path if provided
   if [ -n "$FEATURE_NAME" ]; then
@@ -345,7 +344,7 @@ if [ ! -f "$PRD_FILE" ] || [ "$CURRENT_SPEC_HASH" != "$STORED_SPEC_HASH" ]; then
     print_status "Generating prd.json from spec..."
   fi
 
-  CONVERT_PROMPT=$(cat << 'CONVERT_END'
+  read -r -d '' CONVERT_PROMPT << 'CONVERT_END' || true
 Convert the following markdown spec into a prd.json file.
 
 # Input Spec
@@ -401,7 +400,6 @@ Each story must be completable in ONE focused iteration.
 - Ensure valid JSON syntax
 - Preserve the intent and acceptance criteria from the spec
 CONVERT_END
-)
 
   CONVERT_PROMPT=$(echo "$CONVERT_PROMPT" | sed "s|SPEC_FILE_PLACEHOLDER|$SPEC_FILE|g" | sed "s|PRD_FILE_PLACEHOLDER|$PRD_FILE|g")
 
