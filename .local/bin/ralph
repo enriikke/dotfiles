@@ -1,0 +1,133 @@
+#!/bin/bash
+# Ralph Wiggum - Long-running AI agent loop
+# Named after the Simpsons character who never stops trying
+# Usage: ralph [max_iterations] [working_dir]
+#
+# Environment variables:
+#   RALPH_AGENT_CMD - Command to invoke the agent (default: gh copilot)
+#   RALPH_PROMPT_FILE - Path to prompt file (default: ./ralph-prompt.md)
+#   RALPH_PRD_FILE - Path to PRD file (default: ./ralph-prd.json)
+#   RALPH_PROGRESS_FILE - Path to progress file (default: ./ralph-progress.txt)
+
+set -e
+
+MAX_ITERATIONS=${1:-10}
+WORKING_DIR=${2:-$(pwd)}
+AGENT_CMD=${RALPH_AGENT_CMD:-"gh copilot"}
+PROMPT_FILE=${RALPH_PROMPT_FILE:-"$WORKING_DIR/ralph-prompt.md"}
+PRD_FILE=${RALPH_PRD_FILE:-"$WORKING_DIR/ralph-prd.json"}
+PROGRESS_FILE=${RALPH_PROGRESS_FILE:-"$WORKING_DIR/ralph-progress.txt"}
+ARCHIVE_DIR="$WORKING_DIR/.ralph-archive"
+LAST_BRANCH_FILE="$WORKING_DIR/.ralph-last-branch"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+print_header() {
+  echo ""
+  echo -e "${BLUE}═══════════════════════════════════════════════════════${NC}"
+  echo -e "${BLUE}  $1${NC}"
+  echo -e "${BLUE}═══════════════════════════════════════════════════════${NC}"
+}
+
+print_status() {
+  echo -e "${GREEN}[ralph]${NC} $1"
+}
+
+print_warning() {
+  echo -e "${YELLOW}[ralph]${NC} $1"
+}
+
+print_error() {
+  echo -e "${RED}[ralph]${NC} $1"
+}
+
+# Check for required files
+if [ ! -f "$PROMPT_FILE" ]; then
+  print_error "Prompt file not found: $PROMPT_FILE"
+  echo "Create a ralph-prompt.md file with instructions for the agent."
+  exit 1
+fi
+
+# Archive previous run if branch changed
+if [ -f "$PRD_FILE" ] && [ -f "$LAST_BRANCH_FILE" ]; then
+  CURRENT_BRANCH=$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || echo "")
+  LAST_BRANCH=$(cat "$LAST_BRANCH_FILE" 2>/dev/null || echo "")
+
+  if [ -n "$CURRENT_BRANCH" ] && [ -n "$LAST_BRANCH" ] && [ "$CURRENT_BRANCH" != "$LAST_BRANCH" ]; then
+    DATE=$(date +%Y-%m-%d)
+    FOLDER_NAME=$(echo "$LAST_BRANCH" | sed 's|^ralph/||' | sed 's|/|_|g')
+    ARCHIVE_FOLDER="$ARCHIVE_DIR/$DATE-$FOLDER_NAME"
+
+    print_status "Archiving previous run: $LAST_BRANCH"
+    mkdir -p "$ARCHIVE_FOLDER"
+    [ -f "$PRD_FILE" ] && cp "$PRD_FILE" "$ARCHIVE_FOLDER/"
+    [ -f "$PROGRESS_FILE" ] && cp "$PROGRESS_FILE" "$ARCHIVE_FOLDER/"
+    print_status "Archived to: $ARCHIVE_FOLDER"
+
+    # Reset progress file for new run
+    echo "# Ralph Progress Log" > "$PROGRESS_FILE"
+    echo "Started: $(date)" >> "$PROGRESS_FILE"
+    echo "Branch: $CURRENT_BRANCH" >> "$PROGRESS_FILE"
+    echo "---" >> "$PROGRESS_FILE"
+  fi
+fi
+
+# Track current branch
+if [ -f "$PRD_FILE" ]; then
+  CURRENT_BRANCH=$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || echo "")
+  if [ -n "$CURRENT_BRANCH" ]; then
+    echo "$CURRENT_BRANCH" > "$LAST_BRANCH_FILE"
+  fi
+fi
+
+# Initialize progress file if it doesn't exist
+if [ ! -f "$PROGRESS_FILE" ]; then
+  echo "# Ralph Progress Log" > "$PROGRESS_FILE"
+  echo "Started: $(date)" >> "$PROGRESS_FILE"
+  echo "---" >> "$PROGRESS_FILE"
+fi
+
+print_header "Starting Ralph Wiggum Loop"
+print_status "Max iterations: $MAX_ITERATIONS"
+print_status "Working directory: $WORKING_DIR"
+print_status "Agent command: $AGENT_CMD"
+print_status "Prompt file: $PROMPT_FILE"
+echo ""
+
+cd "$WORKING_DIR"
+
+for i in $(seq 1 $MAX_ITERATIONS); do
+  print_header "Iteration $i of $MAX_ITERATIONS"
+
+  # Run the agent with the prompt
+  # The agent should read the prompt file and work on the task
+  OUTPUT=$(cat "$PROMPT_FILE" | $AGENT_CMD 2>&1 | tee /dev/stderr) || true
+
+  # Check for completion signal
+  if echo "$OUTPUT" | grep -q "<promise>COMPLETE</promise>"; then
+    echo ""
+    print_status "🎉 Ralph completed all tasks!"
+    print_status "Finished at iteration $i of $MAX_ITERATIONS"
+
+    # Log completion
+    echo "" >> "$PROGRESS_FILE"
+    echo "## COMPLETED - $(date)" >> "$PROGRESS_FILE"
+    echo "Finished after $i iterations" >> "$PROGRESS_FILE"
+
+    exit 0
+  fi
+
+  print_status "Iteration $i complete. Continuing in 2 seconds..."
+  sleep 2
+done
+
+echo ""
+print_warning "Ralph reached max iterations ($MAX_ITERATIONS) without completing."
+print_warning "Check $PROGRESS_FILE for status."
+print_warning "You can continue by running: ralph $((MAX_ITERATIONS * 2))"
+exit 1

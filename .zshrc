@@ -49,6 +49,9 @@ fi
 
 # Path exports
 
+# local bin
+export PATH="$HOME/.local/bin:$PATH"
+
 # go
 export PATH=$PATH:$(go env GOPATH)/bin
 
