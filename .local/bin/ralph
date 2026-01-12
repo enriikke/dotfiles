@@ -144,7 +144,7 @@ new_spec() {
   echo ""
 
   # Generate the spec authoring prompt
-  read -r -d '' PROMPT << 'PROMPT_END' || true
+  read -r -d '' PROMPT <<'PROMPT_END' || true
 You are a product manager helping to create a feature specification. Your job is to interview the user, understand what they want to build, and create a well-structured spec document.
 
 # Your Task
@@ -250,9 +250,9 @@ PROMPT_END
 
   # Replace placeholder with actual path if provided
   if [ -n "$FEATURE_NAME" ]; then
-    PROMPT=$(echo "$PROMPT" | sed "s|SPEC_FILE_PLACEHOLDER|$SPEC_FILE|g")
+    PROMPT=${PROMPT//SPEC_FILE_PLACEHOLDER/$SPEC_FILE}
   else
-    PROMPT=$(echo "$PROMPT" | sed "s|SPEC_FILE_PLACEHOLDER|docs/[feature-name].md (ask the user what to name it)|g")
+    PROMPT=${PROMPT//SPEC_FILE_PLACEHOLDER/docs/[feature-name].md (ask the user what to name it)}
   fi
 
   # Run the agent interactively
@@ -300,12 +300,13 @@ LOCK_FILE="$PROJECT_DIR/lock"
 mkdir -p "$PROJECT_DIR"
 
 # Store the spec path for reference
-echo "$SPEC_FILE" > "$PROJECT_DIR/prd-path"
+echo "$SPEC_FILE" >"$PROJECT_DIR/prd-path"
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Lock file to prevent concurrent runs
 # ═══════════════════════════════════════════════════════════════════════════
 
+# shellcheck disable=SC2317,SC2329  # Called via trap
 cleanup() {
   rm -f "$LOCK_FILE"
 }
@@ -322,7 +323,7 @@ if [ -f "$LOCK_FILE" ]; then
   fi
 fi
 
-echo $$ > "$LOCK_FILE"
+echo $$ >"$LOCK_FILE"
 trap cleanup EXIT
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -344,7 +345,7 @@ if [ ! -f "$PRD_FILE" ] || [ "$CURRENT_SPEC_HASH" != "$STORED_SPEC_HASH" ]; then
     print_status "Generating prd.json from spec..."
   fi
 
-  read -r -d '' CONVERT_PROMPT << 'CONVERT_END' || true
+  read -r -d '' CONVERT_PROMPT <<'CONVERT_END' || true
 Convert the following markdown spec into a prd.json file.
 
 # Input Spec
@@ -404,7 +405,7 @@ CONVERT_END
   CONVERT_PROMPT=$(echo "$CONVERT_PROMPT" | sed "s|SPEC_FILE_PLACEHOLDER|$SPEC_FILE|g" | sed "s|PRD_FILE_PLACEHOLDER|$PRD_FILE|g")
 
   # Run conversion
-  echo "$CONVERT_PROMPT" | $AGENT_CMD > /dev/null 2>&1
+  echo "$CONVERT_PROMPT" | $AGENT_CMD >/dev/null 2>&1
 
   if [ ! -f "$PRD_FILE" ]; then
     print_error "Failed to generate prd.json"
@@ -412,7 +413,7 @@ CONVERT_END
   fi
 
   # Store the hash
-  echo "$CURRENT_SPEC_HASH" > "$SPEC_HASH_FILE"
+  echo "$CURRENT_SPEC_HASH" >"$SPEC_HASH_FILE"
   print_status "Generated: $PRD_FILE"
 fi
 
@@ -423,7 +424,7 @@ fi
 CURRENT_BRANCH=$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || echo "")
 
 if [ ! -f "$PROGRESS_FILE" ]; then
-  cat > "$PROGRESS_FILE" << EOF
+  cat >"$PROGRESS_FILE" <<EOF
 # Ralph Progress Log
 Started: $(date)
 Spec: $SPEC_FILE
@@ -437,7 +438,7 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════
 
 generate_prompt() {
-  cat << 'PROMPT_END'
+  cat <<'PROMPT_END'
 You are an autonomous coding agent working on a software project.
 
 # Your Task
@@ -524,7 +525,7 @@ echo ""
 
 cd "$WORKING_DIR"
 
-for i in $(seq 1 $MAX_ITERATIONS); do
+for i in $(seq 1 "$MAX_ITERATIONS"); do
   print_header "Iteration $i of $MAX_ITERATIONS"
 
   # Generate prompt with interpolated file paths
@@ -539,7 +540,7 @@ for i in $(seq 1 $MAX_ITERATIONS); do
     print_status "Ralph completed all tasks!"
     print_status "Finished at iteration $i of $MAX_ITERATIONS"
 
-    cat >> "$PROGRESS_FILE" << EOF
+    cat >>"$PROGRESS_FILE" <<EOF
 
 ## COMPLETED - $(date)
 Finished after $i iterations
