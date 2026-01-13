@@ -1,7 +1,7 @@
 .PHONY: help lint fmt fmt-check check
 
 # Directories to lint/format
-SHELL_DIRS := script
+SHELL_DIRS := script .local/bin
 
 help:
 	@echo "Available targets:"
