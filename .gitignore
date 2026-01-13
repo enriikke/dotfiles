@@ -17,6 +17,8 @@ Thumbs.db
 !.config/ghostty
 !.config/zsh
 !.config/nvim
+!.config/nvim/lua/*
+!.config/tmux
 
 # Ignore runtime zsh files
 .config/zsh/history
