@@ -435,7 +435,7 @@ CONVERT_END
       )
     ' "$PRD_FILE")
 
-    echo "$MERGED_PRD" > "$PRD_FILE"
+    echo "$MERGED_PRD" >"$PRD_FILE"
 
     # Count preserved stories
     PRESERVED=$(jq '[.userStories[] | select(.passes == true)] | length' "$PRD_FILE" 2>/dev/null || echo "0")
