@@ -339,8 +339,12 @@ fi
 if [ ! -f "$PRD_FILE" ] || [ "$CURRENT_SPEC_HASH" != "$STORED_SPEC_HASH" ]; then
   print_header "Converting Spec to JSON"
 
+  # Backup existing PRD for status preservation
+  OLD_PRD_FILE=""
   if [ -f "$PRD_FILE" ]; then
     print_status "Spec changed, regenerating prd.json..."
+    OLD_PRD_FILE="$PROJECT_DIR/prd.old.json"
+    cp "$PRD_FILE" "$OLD_PRD_FILE"
   else
     print_status "Generating prd.json from spec..."
   fi
@@ -410,6 +414,36 @@ CONVERT_END
   if [ ! -f "$PRD_FILE" ]; then
     print_error "Failed to generate prd.json"
     exit 1
+  fi
+
+  # Merge status from old PRD if it exists
+  if [ -n "$OLD_PRD_FILE" ] && [ -f "$OLD_PRD_FILE" ]; then
+    print_status "Preserving status from previous prd.json..."
+
+    # Create a merged version that preserves passes/notes for matching stories
+    MERGED_PRD=$(jq --slurpfile old "$OLD_PRD_FILE" '
+      # Build a lookup map from old stories by title (more stable than ID)
+      ($old[0].userStories | map({key: .title, value: {passes: .passes, notes: .notes}}) | from_entries) as $oldStatus |
+      # Update new stories with old status where titles match
+      .userStories |= map(
+        if $oldStatus[.title] then
+          .passes = $oldStatus[.title].passes |
+          .notes = $oldStatus[.title].notes
+        else
+          .
+        end
+      )
+    ' "$PRD_FILE")
+
+    echo "$MERGED_PRD" >"$PRD_FILE"
+
+    # Count preserved stories
+    PRESERVED=$(jq '[.userStories[] | select(.passes == true)] | length' "$PRD_FILE" 2>/dev/null || echo "0")
+    if [ "$PRESERVED" -gt 0 ]; then
+      print_status "Preserved status for $PRESERVED completed stories"
+    fi
+
+    rm -f "$OLD_PRD_FILE"
   fi
 
   # Store the hash
