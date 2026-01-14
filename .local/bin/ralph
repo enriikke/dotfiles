@@ -345,6 +345,7 @@ if [ ! -f "$PRD_FILE" ] || [ "$CURRENT_SPEC_HASH" != "$STORED_SPEC_HASH" ]; then
     print_status "Spec changed, regenerating prd.json..."
     OLD_PRD_FILE="$PROJECT_DIR/prd.old.json"
     cp "$PRD_FILE" "$OLD_PRD_FILE"
+    rm -f "$PRD_FILE"
   else
     print_status "Generating prd.json from spec..."
   fi
@@ -409,10 +410,22 @@ CONVERT_END
   CONVERT_PROMPT=$(echo "$CONVERT_PROMPT" | sed "s|SPEC_FILE_PLACEHOLDER|$SPEC_FILE|g" | sed "s|PRD_FILE_PLACEHOLDER|$PRD_FILE|g")
 
   # Run conversion
-  echo "$CONVERT_PROMPT" | $AGENT_CMD >/dev/null 2>&1
+  CONVERT_OUTPUT=$(echo "$CONVERT_PROMPT" | $AGENT_CMD 2>&1) || CONVERT_EXIT_CODE=$?
 
-  if [ ! -f "$PRD_FILE" ]; then
+  if [ -n "${CONVERT_EXIT_CODE:-}" ] || [ ! -f "$PRD_FILE" ]; then
     print_error "Failed to generate prd.json"
+    if [ -n "${CONVERT_EXIT_CODE:-}" ]; then
+      print_error "Agent exited with code: $CONVERT_EXIT_CODE"
+    fi
+    if [ -n "${CONVERT_OUTPUT:-}" ]; then
+      print_error "Agent output:"
+      echo "$CONVERT_OUTPUT" | head -50
+    fi
+    # Restore old PRD if we backed it up
+    if [ -n "$OLD_PRD_FILE" ] && [ -f "$OLD_PRD_FILE" ]; then
+      mv "$OLD_PRD_FILE" "$PRD_FILE"
+      print_warning "Restored previous prd.json"
+    fi
     exit 1
   fi
 
