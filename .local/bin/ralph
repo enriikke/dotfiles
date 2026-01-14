@@ -411,7 +411,7 @@ CONVERT_END
 
   # Run conversion
   CONVERT_OUTPUT=$(echo "$CONVERT_PROMPT" | $AGENT_CMD 2>&1) || CONVERT_EXIT_CODE=$?
-  
+
   if [ -n "${CONVERT_EXIT_CODE:-}" ] || [ ! -f "$PRD_FILE" ]; then
     print_error "Failed to generate prd.json"
     if [ -n "${CONVERT_EXIT_CODE:-}" ]; then
