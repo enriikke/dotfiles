@@ -18,7 +18,7 @@ set -e
 # ═══════════════════════════════════════════════════════════════════════════
 
 RALPH_HOME="${RALPH_HOME:-$HOME/.ralph}"
-AGENT_CMD="${RALPH_AGENT_CMD:-copilot --allow-all-tools --allow-all-paths --allow-all-urls --model claude-opus-4.5}"
+AGENT_CMD="${RALPH_AGENT_CMD:-copilot --yolo --model claude-opus-4.5}"
 
 # Colors
 RED='\033[0;31m'

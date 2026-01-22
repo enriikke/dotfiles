@@ -29,6 +29,7 @@ Thumbs.db
 tmp/
 
 # Exclude work-specific SSH configurations
+config.personal
 config.work
 config.local
 *.work
