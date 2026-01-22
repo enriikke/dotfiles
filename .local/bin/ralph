@@ -510,14 +510,26 @@ Order stories by dependency AND add checkpoints at integration points:
 
 # Important
 
-- Do NOT implement anything - just create the JSON spec
-- Do NOT create GitHub issues - just write the JSON file
+- Do NOT implement anything - just create the JSON spec and issues
 - Ask questions FIRST, then generate the JSON
 - Keep stories small and focused
 - Always include checkpoints at integration points
 - Always end with E2E-FINAL checkpoint
 - Escape newlines as \\n in JSON strings
 - The JSON must be valid - test it mentally before writing
+
+# CRITICAL: Creating the Issues
+
+After the interview, you must:
+
+1. Write the JSON spec to: $SPEC_JSON_FILE
+2. Run this command to create the GitHub issues:
+   \`\`\`bash
+   ralph --create-from-spec $SPEC_JSON_FILE
+   \`\`\`
+
+This command will batch-create all issues and link them as sub-issues.
+Do BOTH steps - write the file AND run the command.
 PROMPT_END
 
   # Add feature name hint if provided
@@ -527,29 +539,54 @@ PROMPT_END
 The user wants to build a feature called: $feature_name"
   fi
 
-  # Run the agent interactively to gather spec
+  # Run the agent interactively
   print_status "Starting interview..."
+  echo ""
   $AGENT_CMD -i "$PROMPT"
 
-  # Check if JSON was created
-  if [ ! -f "$SPEC_JSON_FILE" ] || [ ! -s "$SPEC_JSON_FILE" ]; then
-    print_error "No spec JSON was generated. Please try again."
+  exit 0
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Create from spec command (called by agent after writing JSON)
+# ═══════════════════════════════════════════════════════════════════════════
+
+create_from_spec() {
+  local spec_file="$1"
+
+  if [ -z "$spec_file" ]; then
+    print_error "Usage: ralph --create-from-spec <json-file>"
+    exit 1
+  fi
+
+  if [ ! -f "$spec_file" ]; then
+    print_error "Spec file not found: $spec_file"
     exit 1
   fi
 
   # Validate JSON
-  if ! jq empty "$SPEC_JSON_FILE" 2>/dev/null; then
-    print_error "Invalid JSON in spec file. Please try again."
-    cat "$SPEC_JSON_FILE"
+  if ! jq empty "$spec_file" 2>/dev/null; then
+    print_error "Invalid JSON in spec file"
+    cat "$spec_file"
     exit 1
   fi
+
+  # Get repo info
+  local repo repo_id
+  repo=$(gh_get_repo 2>/dev/null) || {
+    print_error "Not in a git repository or gh CLI not authenticated"
+    exit 1
+  }
+  repo_id=$(gh_get_repo_id)
+
+  gh_ensure_labels
 
   print_header "Creating GitHub Issues"
 
   # Extract parent and stories from JSON
   local parent_json stories_json
-  parent_json=$(jq '.parent' "$SPEC_JSON_FILE")
-  stories_json=$(jq '.stories' "$SPEC_JSON_FILE")
+  parent_json=$(jq '.parent' "$spec_file")
+  stories_json=$(jq '.stories' "$spec_file")
 
   local parent_title story_count
   parent_title=$(echo "$parent_json" | jq -r '.title')
@@ -624,6 +661,10 @@ fi
 
 if [ "$1" = "--status" ]; then
   show_status
+fi
+
+if [ "$1" = "--create-from-spec" ]; then
+  create_from_spec "$2"
 fi
 
 if [ "$1" = "--new" ]; then
