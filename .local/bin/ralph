@@ -302,6 +302,104 @@ show_status() {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Batch GitHub operations for fast issue creation
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Get repository node ID (needed for GraphQL issue creation)
+gh_get_repo_id() {
+  gh repo view --json id --jq '.id'
+}
+
+# Batch create issues via GraphQL (much faster than sequential gh issue create)
+# Usage: gh_batch_create_issues "repo_id" "json_array_of_issues"
+# Input JSON format: [{"title": "...", "body": "...", "labels": ["label1"]}, ...]
+# Returns JSON: [{"id": "node_id", "number": 123}, ...]
+gh_batch_create_issues() {
+  local repo_id="$1"
+  local issues_json="$2"
+
+  local count
+  count=$(echo "$issues_json" | jq 'length')
+
+  if [ "$count" -eq 0 ]; then
+    echo "[]"
+    return
+  fi
+
+  # Build GraphQL mutation with multiple createIssue operations
+  local mutation="mutation {"
+  local variables=""
+
+  for i in $(seq 0 $((count - 1))); do
+    local title body labels_array label_ids
+    title=$(echo "$issues_json" | jq -r ".[$i].title")
+    body=$(echo "$issues_json" | jq -r ".[$i].body")
+    labels_array=$(echo "$issues_json" | jq -c ".[$i].labels // []")
+
+    # Convert label names to label IDs
+    label_ids=$(gh label list --json id,name | jq -c --argjson labels "$labels_array" '
+      [.[] | select(.name as $n | $labels | index($n)) | .id]
+    ')
+
+    mutation="$mutation
+      issue$i: createIssue(input: {
+        repositoryId: \"$repo_id\",
+        title: \"$(echo "$title" | sed 's/"/\\"/g')\",
+        body: \"$(echo "$body" | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')\",
+        labelIds: $label_ids
+      }) { issue { id number title } }"
+  done
+
+  mutation="$mutation
+    }"
+
+  # Execute the batch mutation
+  local result
+  result=$(gh api graphql -f query="$mutation" 2>&1)
+
+  if [ $? -ne 0 ]; then
+    print_error "Batch issue creation failed: $result"
+    return 1
+  fi
+
+  # Extract issue IDs and numbers from result
+  echo "$result" | jq '[.data | to_entries[] | {id: .value.issue.id, number: .value.issue.number, title: .value.issue.title}]'
+}
+
+# Batch link issues as sub-issues via GraphQL
+# Usage: gh_batch_link_sub_issues "parent_id" "json_array_of_child_ids"
+gh_batch_link_sub_issues() {
+  local parent_id="$1"
+  local children_json="$2"
+
+  local count
+  count=$(echo "$children_json" | jq 'length')
+
+  if [ "$count" -eq 0 ]; then
+    return 0
+  fi
+
+  # Build GraphQL mutation with multiple addSubIssue operations
+  local mutation="mutation {"
+
+  for i in $(seq 0 $((count - 1))); do
+    local child_id
+    child_id=$(echo "$children_json" | jq -r ".[$i]")
+
+    mutation="$mutation
+      link$i: addSubIssue(input: {issueId: \"$parent_id\", subIssueId: \"$child_id\"}) {
+        subIssue { id }
+      }"
+  done
+
+  mutation="$mutation
+    }"
+
+  # Execute the batch mutation
+  gh api graphql -f query="$mutation" --silent
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
 # New spec command (interactive) - Creates GitHub Issues
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -311,11 +409,12 @@ new_spec() {
   print_header "New Spec - Interactive Mode (GitHub Issues)"
 
   # Ensure we're in a repo and labels exist
-  local repo
+  local repo repo_id
   repo=$(gh_get_repo 2>/dev/null) || {
     print_error "Not in a git repository or gh CLI not authenticated"
     exit 1
   }
+  repo_id=$(gh_get_repo_id)
 
   print_status "Repository: $repo"
   gh_ensure_labels
@@ -328,9 +427,13 @@ new_spec() {
 
   echo ""
 
-  # Generate the spec authoring prompt
-  read -r -d '' PROMPT <<'PROMPT_END' || true
-You are a product manager helping to create a feature specification. Your job is to interview the user, understand what they want to build, and create GitHub issues for the spec.
+  # Temp file for spec JSON output
+  SPEC_JSON_FILE=$(mktemp /tmp/ralph-spec-XXXXXX.json)
+  trap "rm -f $SPEC_JSON_FILE" EXIT
+
+  # Generate the spec authoring prompt - outputs JSON instead of running commands
+  read -r -d '' PROMPT <<PROMPT_END || true
+You are a product manager helping to create a feature specification. Your job is to interview the user, understand what they want to build, and output a structured JSON spec.
 
 # Your Task
 
@@ -342,83 +445,44 @@ You are a product manager helping to create a feature specification. Your job is
    - **Success Criteria:** How do we know it's done?
 
 3. Format questions with lettered options for quick responses:
-   ```
+   \`\`\`
    1. What is the primary goal?
       A. Improve user experience
       B. Add new capability
       C. Fix existing pain point
       D. Other: [please specify]
-   ```
+   \`\`\`
    This lets users respond with "1A, 2C, 3B" quickly.
 
-4. After gathering answers, create the GitHub issues.
+4. After gathering answers, generate the spec as JSON and save it.
 
-# Creating the Issues
+# Output Format
 
-You will create:
-1. **One parent issue** (the spec) with label `ralph-spec`
-2. **Multiple child issues** (the stories) with label `ralph-story` or `ralph-checkpoint`
+After the interview, write a JSON file to: $SPEC_JSON_FILE
 
-## Parent Issue Format
-
-Title: `[Feature Name]`
-
-Body:
-```markdown
-## Overview
-Brief description of the feature and the problem it solves.
-
-## Branch
-`ralph/[feature-name-kebab-case]`
-
-## Goals
-- Specific, measurable objectives
-- What success looks like
-
-## Non-Goals
-What this feature will NOT include.
-
-## Stories
-<!-- Sub-issues will be linked automatically -->
-```
-
-## Story Issue Format
-
-Title: `US-XXX: [Short descriptive title]`
-
-Body:
-```markdown
-## Description
-As a [user], I want [feature] so that [benefit].
-
-## Acceptance Criteria
-- [ ] Specific, verifiable criterion
-- [ ] Another criterion
-- [ ] Typecheck passes
-- [ ] [For UI changes] Verify in browser
-
-## Notes
-Any additional context for implementation.
-```
-
-## Checkpoint Issue Format (for E2E validation)
-
-Title: `CHECKPOINT: [What to verify]`
-Label: `ralph-checkpoint` (in addition to `ralph-story`)
-
-Body:
-```markdown
-## Description
-Verify that the implemented stories work together end-to-end.
-
-## Verification Steps
-- [ ] Step 1: Navigate to X
-- [ ] Step 2: Perform action Y
-- [ ] Step 3: Verify result Z
-
-## If Issues Found
-Create new story issues to fix problems, then re-run this checkpoint.
-```
+\`\`\`json
+{
+  "parent": {
+    "title": "Feature Name",
+    "body": "## Overview\\n...\\n\\n## Branch\\n\\\`ralph/feature-name\\\`\\n\\n## Goals\\n- ...\\n\\n## Non-Goals\\n- ...",
+    "labels": ["$RALPH_LABEL"]
+  },
+  "stories": [
+    {
+      "title": "US-001: Story title",
+      "body": "## Description\\nAs a user, I want...\\n\\n## Acceptance Criteria\\n- [ ] Criterion 1\\n- [ ] Typecheck passes",
+      "labels": ["$RALPH_STORY_LABEL"],
+      "isCheckpoint": false
+    },
+    {
+      "title": "CHECKPOINT: Verify backend works",
+      "body": "## Description\\nVerify...\\n\\n## Verification Steps\\n- [ ] Step 1",
+      "labels": ["$RALPH_STORY_LABEL", "$RALPH_CHECKPOINT_LABEL"],
+      "isCheckpoint": true
+    }
+  ]
+}
+\`\`\`
 
 # Story Sizing Rules
 
@@ -444,46 +508,16 @@ Order stories by dependency AND add checkpoints at integration points:
 5. **CHECKPOINT: Verify full flow E2E** (after UI stories)
 6. **E2E-FINAL: Complete feature validation** (always last)
 
-# Creating Issues with gh CLI
-
-Use these commands to create the issues:
-
-```bash
-# Create parent issue
-gh issue create --title "Feature Name" --body "..." --label "ralph-spec"
-
-# Create story issues (note the number returned)
-gh issue create --title "US-001: Story title" --body "..." --label "ralph-story"
-
-# Create checkpoint issues
-gh issue create --title "CHECKPOINT: Verify X" --body "..." --label "ralph-story,ralph-checkpoint"
-```
-
-After creating all issues, link them as sub-issues using the GraphQL API:
-
-```bash
-# Get node IDs
-PARENT_ID=$(gh issue view PARENT_NUMBER --json id --jq '.id')
-CHILD_ID=$(gh issue view CHILD_NUMBER --json id --jq '.id')
-
-# Link as sub-issue
-gh api graphql -f query='
-  mutation($parent: ID!, $child: ID!) {
-    addSubIssue(input: {issueId: $parent, subIssueId: $child}) {
-      subIssue { id }
-    }
-  }
-' -f parent="$PARENT_ID" -f child="$CHILD_ID"
-```
-
 # Important
 
-- Do NOT implement anything - just create the issues
-- Ask questions FIRST, then create the issues
+- Do NOT implement anything - just create the JSON spec
+- Do NOT create GitHub issues - just write the JSON file
+- Ask questions FIRST, then generate the JSON
 - Keep stories small and focused
 - Always include checkpoints at integration points
 - Always end with E2E-FINAL checkpoint
-- Link ALL story issues as sub-issues of the parent
+- Escape newlines as \\n in JSON strings
+- The JSON must be valid - test it mentally before writing
 PROMPT_END
 
   # Add feature name hint if provided
@@ -493,8 +527,89 @@ PROMPT_END
 The user wants to build a feature called: $feature_name"
   fi
 
-  # Run the agent interactively
+  # Run the agent interactively to gather spec
+  print_status "Starting interview..."
   $AGENT_CMD -i "$PROMPT"
+
+  # Check if JSON was created
+  if [ ! -f "$SPEC_JSON_FILE" ] || [ ! -s "$SPEC_JSON_FILE" ]; then
+    print_error "No spec JSON was generated. Please try again."
+    exit 1
+  fi
+
+  # Validate JSON
+  if ! jq empty "$SPEC_JSON_FILE" 2>/dev/null; then
+    print_error "Invalid JSON in spec file. Please try again."
+    cat "$SPEC_JSON_FILE"
+    exit 1
+  fi
+
+  print_header "Creating GitHub Issues"
+
+  # Extract parent and stories from JSON
+  local parent_json stories_json
+  parent_json=$(jq '.parent' "$SPEC_JSON_FILE")
+  stories_json=$(jq '.stories' "$SPEC_JSON_FILE")
+
+  local parent_title story_count
+  parent_title=$(echo "$parent_json" | jq -r '.title')
+  story_count=$(echo "$stories_json" | jq 'length')
+
+  print_status "Creating parent issue: $parent_title"
+  print_status "Creating $story_count story issues..."
+
+  # Step 1: Create parent issue
+  local parent_result parent_id parent_number
+  parent_result=$(gh_batch_create_issues "$repo_id" "[$parent_json]")
+  parent_id=$(echo "$parent_result" | jq -r '.[0].id')
+  parent_number=$(echo "$parent_result" | jq -r '.[0].number')
+
+  if [ -z "$parent_id" ] || [ "$parent_id" = "null" ]; then
+    print_error "Failed to create parent issue"
+    exit 1
+  fi
+
+  print_status "Created parent issue #$parent_number"
+
+  # Step 2: Batch create all story issues
+  print_status "Batch creating $story_count stories..."
+  local stories_result
+  stories_result=$(gh_batch_create_issues "$repo_id" "$stories_json")
+
+  if [ $? -ne 0 ]; then
+    print_error "Failed to create story issues"
+    exit 1
+  fi
+
+  local created_count
+  created_count=$(echo "$stories_result" | jq 'length')
+  print_status "Created $created_count story issues"
+
+  # Step 3: Batch link all stories as sub-issues
+  print_status "Linking stories to parent..."
+  local child_ids
+  child_ids=$(echo "$stories_result" | jq '[.[].id]')
+
+  gh_batch_link_sub_issues "$parent_id" "$child_ids"
+
+  if [ $? -ne 0 ]; then
+    print_error "Failed to link some sub-issues (they were still created)"
+  fi
+
+  print_status "Linked $created_count stories as sub-issues"
+
+  # Summary
+  print_header "Spec Created Successfully"
+  echo ""
+  echo -e "  ${BOLD}Parent Issue:${NC} #$parent_number - $parent_title"
+  echo -e "  ${BOLD}Stories:${NC} $created_count"
+  echo ""
+  echo -e "  ${CYAN}View:${NC} gh issue view $parent_number"
+  echo -e "  ${CYAN}Run:${NC}  ralph $parent_number"
+  echo ""
+
+  # Show created stories
+  echo "$stories_result" | jq -r '.[] | "  - #\(.number): \(.title)"'
 
   exit 0
 }
@@ -855,15 +970,122 @@ PROMPT_END
 # Main loop
 # ═══════════════════════════════════════════════════════════════════════════
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Analytics tracking
+# ═══════════════════════════════════════════════════════════════════════════
+
+RUN_START_TIME=$(date +%s)
+TOTAL_TOKENS_IN=0
+TOTAL_TOKENS_OUT=0
+TOTAL_TOKENS=0
+ITERATION_TIMES=()
+STORIES_COMPLETED_THIS_RUN=0
+
+# Helper to format duration
+format_duration() {
+  local seconds=$1
+  local hours=$((seconds / 3600))
+  local minutes=$(((seconds % 3600) / 60))
+  local secs=$((seconds % 60))
+  if [ "$hours" -gt 0 ]; then
+    printf "%dh %dm %ds" "$hours" "$minutes" "$secs"
+  elif [ "$minutes" -gt 0 ]; then
+    printf "%dm %ds" "$minutes" "$secs"
+  else
+    printf "%ds" "$secs"
+  fi
+}
+
+# Helper to extract tokens from agent output
+# Looks for common patterns like "tokens: X", "input_tokens: X", etc.
+extract_tokens() {
+  local output="$1"
+  local tokens_in=0
+  local tokens_out=0
+
+  # Try to find input tokens (various patterns)
+  local in_match
+  in_match=$(echo "$output" | grep -oiE '(input_tokens|prompt_tokens|input tokens)[:\s]*[0-9,]+' | grep -oE '[0-9,]+' | tr -d ',' | tail -1)
+  if [ -n "$in_match" ]; then
+    tokens_in=$in_match
+  fi
+
+  # Try to find output tokens
+  local out_match
+  out_match=$(echo "$output" | grep -oiE '(output_tokens|completion_tokens|output tokens)[:\s]*[0-9,]+' | grep -oE '[0-9,]+' | tr -d ',' | tail -1)
+  if [ -n "$out_match" ]; then
+    tokens_out=$out_match
+  fi
+
+  # If no breakdown, try total tokens
+  if [ "$tokens_in" -eq 0 ] && [ "$tokens_out" -eq 0 ]; then
+    local total_match
+    total_match=$(echo "$output" | grep -oiE '(total_tokens|tokens)[:\s]*[0-9,]+' | grep -oE '[0-9,]+' | tr -d ',' | tail -1)
+    if [ -n "$total_match" ]; then
+      echo "0 0 $total_match"
+      return
+    fi
+  fi
+
+  echo "$tokens_in $tokens_out $((tokens_in + tokens_out))"
+}
+
+# Print analytics summary
+print_analytics() {
+  local end_time=$1
+  local iterations=$2
+  local stories_done=$3
+
+  local total_duration=$((end_time - RUN_START_TIME))
+
+  print_header "Run Analytics"
+
+  echo ""
+  echo -e "${BOLD}Time${NC}"
+  echo -e "  Total duration:      $(format_duration $total_duration)"
+
+  if [ "$iterations" -gt 0 ]; then
+    local avg_iteration=$((total_duration / iterations))
+    echo -e "  Iterations:          $iterations"
+    echo -e "  Avg per iteration:   $(format_duration $avg_iteration)"
+  fi
+
+  if [ "$stories_done" -gt 0 ]; then
+    local avg_story=$((total_duration / stories_done))
+    echo -e "  Stories completed:   $stories_done"
+    echo -e "  Avg per story:       $(format_duration $avg_story)"
+  fi
+
+  echo ""
+  echo -e "${BOLD}Tokens${NC}"
+  if [ "$TOTAL_TOKENS" -gt 0 ]; then
+    if [ "$TOTAL_TOKENS_IN" -gt 0 ] || [ "$TOTAL_TOKENS_OUT" -gt 0 ]; then
+      printf "  Input tokens:        %'d\n" "$TOTAL_TOKENS_IN"
+      printf "  Output tokens:       %'d\n" "$TOTAL_TOKENS_OUT"
+    fi
+    printf "  Total tokens:        %'d\n" "$TOTAL_TOKENS"
+    if [ "$iterations" -gt 0 ]; then
+      local avg_tokens=$((TOTAL_TOKENS / iterations))
+      printf "  Avg per iteration:   %'d\n" "$avg_tokens"
+    fi
+  else
+    echo "  (token data not available from agent)"
+  fi
+
+  echo ""
+}
+
 print_header "Starting Ralph Wiggum 2.0"
 print_status "Repository: $REPO"
 print_status "Spec: #$PARENT_NUMBER - $PARENT_TITLE"
 print_status "Branch: $BRANCH_NAME"
 print_status "Max iterations: $MAX_ITERATIONS"
 print_status "Agent: $AGENT_CMD"
+print_status "Started: $(date)"
 
 # Get initial sub-issues status
 SUB_ISSUES=$(gh_get_sub_issues "$PARENT_ID")
+INITIAL_DONE=$(echo "$SUB_ISSUES" | jq '[.[] | select(.state == "CLOSED")] | length')
 TOTAL=$(echo "$SUB_ISSUES" | jq 'length')
 DONE=$(echo "$SUB_ISSUES" | jq '[.[] | select(.state == "CLOSED")] | length')
 
@@ -939,6 +1161,7 @@ print_status "Progress: $DONE/$TOTAL stories complete"
 echo ""
 
 for i in $(seq 1 "$MAX_ITERATIONS"); do
+  ITERATION_START=$(date +%s)
   print_header "Iteration $i of $MAX_ITERATIONS"
 
   # Refresh sub-issues list
@@ -950,16 +1173,26 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
   if [ "$DONE" -eq "$TOTAL" ] && [ "$TOTAL" -gt 0 ]; then
     print_status "All stories complete!"
 
-    # Add completion comment to parent issue
+    RUN_END_TIME=$(date +%s)
+    STORIES_COMPLETED_THIS_RUN=$((DONE - INITIAL_DONE))
+
+    # Print analytics
+    print_analytics "$RUN_END_TIME" "$((i - 1))" "$STORIES_COMPLETED_THIS_RUN"
+
+    # Add completion comment to parent issue with analytics
+    local duration=$(format_duration $((RUN_END_TIME - RUN_START_TIME)))
     gh_add_comment "$PARENT_NUMBER" "## ✅ Ralph Completed
 
 All $TOTAL stories have been implemented and verified.
 
 **Completed at:** $(date)
-**Iterations:** $i"
+**Duration:** $duration
+**Iterations:** $((i - 1))
+**Stories this run:** $STORIES_COMPLETED_THIS_RUN
+**Total tokens:** $TOTAL_TOKENS"
 
     # Remove lock and close parent if desired
-    print_status "Finished at iteration $i of $MAX_ITERATIONS"
+    print_status "Finished at iteration $((i - 1)) of $MAX_ITERATIONS"
     print_status "You may want to close the parent issue #$PARENT_NUMBER"
     exit 0
   fi
@@ -1022,21 +1255,49 @@ All $TOTAL stories have been implemented and verified.
   # Generate the prompt
   PROMPT=$(generate_prompt "$STORY_NUMBER" "$STORY_TITLE" "$STORY_BODY" "$IS_CHECKPOINT" "$RECENT_COMMENTS" "$GIT_DIFF_STAT" "$COMPLETED_STORIES")
 
-  # Run the agent
+  # Run the agent and capture output for token extraction
   print_status "Launching agent..."
-  echo "$PROMPT" | $AGENT_CMD 2>&1 | tee /dev/stderr || true
+  AGENT_OUTPUT=$(echo "$PROMPT" | $AGENT_CMD 2>&1) || true
+  echo "$AGENT_OUTPUT"
+
+  # Extract tokens from this iteration
+  ITER_TOKENS=$(extract_tokens "$AGENT_OUTPUT")
+  ITER_IN=$(echo "$ITER_TOKENS" | cut -d' ' -f1)
+  ITER_OUT=$(echo "$ITER_TOKENS" | cut -d' ' -f2)
+  ITER_TOTAL=$(echo "$ITER_TOKENS" | cut -d' ' -f3)
+
+  TOTAL_TOKENS_IN=$((TOTAL_TOKENS_IN + ITER_IN))
+  TOTAL_TOKENS_OUT=$((TOTAL_TOKENS_OUT + ITER_OUT))
+  TOTAL_TOKENS=$((TOTAL_TOKENS + ITER_TOTAL))
+
+  # Track iteration time
+  ITERATION_END=$(date +%s)
+  ITERATION_DURATION=$((ITERATION_END - ITERATION_START))
+  ITERATION_TIMES+=("$ITERATION_DURATION")
 
   # Check progress after iteration
+  PREV_DONE=$DONE
   SUB_ISSUES=$(gh_get_sub_issues "$PARENT_ID")
   DONE=$(echo "$SUB_ISSUES" | jq '[.[] | select(.state == "CLOSED")] | length')
 
+  # Track stories completed
+  if [ "$DONE" -gt "$PREV_DONE" ]; then
+    STORIES_COMPLETED_THIS_RUN=$((STORIES_COMPLETED_THIS_RUN + DONE - PREV_DONE))
+  fi
+
   print_status "Progress: $DONE/$TOTAL stories complete"
-  print_status "Iteration $i complete. Continuing in 2 seconds..."
+  print_status "Iteration $i complete ($(format_duration $ITERATION_DURATION)). Continuing in 2 seconds..."
   sleep 2
 done
+
+RUN_END_TIME=$(date +%s)
 
 echo ""
 print_warning "Ralph reached max iterations ($MAX_ITERATIONS) without completing."
 print_warning "Progress: $DONE/$TOTAL stories complete"
+
+# Print analytics even on incomplete run
+print_analytics "$RUN_END_TIME" "$MAX_ITERATIONS" "$STORIES_COMPLETED_THIS_RUN"
+
 print_warning "Continue with: ralph $PARENT_NUMBER $((MAX_ITERATIONS * 2))"
 exit 1
