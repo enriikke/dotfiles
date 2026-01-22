@@ -494,7 +494,7 @@ The user wants to build a feature called: $feature_name"
   fi
 
   # Run the agent interactively
-  $AGENT_CMD "$PROMPT"
+  $AGENT_CMD -i "$PROMPT"
 
   exit 0
 }
