@@ -305,7 +305,7 @@ get_next_story() {
     if echo "$line" | grep -q '^\- \[.\]'; then
       index=$((index + 1))
     fi
-  done <<< "$body"
+  done <<<"$body"
 
   echo ""
 }
@@ -336,7 +336,7 @@ mark_story_complete() {
     fi
     new_body="$new_body$line
 "
-  done <<< "$body"
+  done <<<"$body"
 
   gh issue edit "$issue_number" --body "$new_body"
 }
@@ -594,7 +594,7 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
 
     # Update labels: remove running, add completed
     gh issue edit "$ISSUE_NUMBER" --remove-label "$RALPH_RUNNING_LABEL" --add-label "$RALPH_COMPLETED_LABEL" 2>/dev/null || true
-    RUNNING_ISSUE=""  # Prevent cleanup from running again
+    RUNNING_ISSUE="" # Prevent cleanup from running again
 
     gh issue comment "$ISSUE_NUMBER" --body "## ✅ Ralph Complete
 
