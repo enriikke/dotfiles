@@ -1,11 +1,11 @@
 #!/bin/bash
-# Ralph Wiggum 2.0 - GitHub-Native AI Agent Loop
+# Ralph Wiggum 2.0 - GitHub Issue-Based AI Agent Loop
 # Named after the Simpsons character who never stops trying
 #
 # Usage:
-#   ralph <issue-url|number> [max-iterations]  Run the autonomous loop
-#   ralph --new [feature-name]                 Interactive spec authoring (creates GitHub issues)
-#   ralph --status                             Show status of all ralph specs in current repo
+#   ralph <issue-number>        Run the autonomous loop on a spec issue
+#   ralph --new [feature-name]  Interactive spec authoring (creates GitHub issue)
+#   ralph --status              Show status of all ralph specs in current repo
 #
 # Environment variables:
 #   RALPH_AGENT_CMD - Command to invoke the agent (default: copilot)
@@ -16,10 +16,13 @@ set -e
 # Configuration
 # ═══════════════════════════════════════════════════════════════════════════
 
-AGENT_CMD="${RALPH_AGENT_CMD:-copilot --yolo --model claude-opus-4.5}"
+AGENT_CMD="${RALPH_AGENT_CMD:-copilot}"
 RALPH_LABEL="ralph-spec"
-RALPH_STORY_LABEL="ralph-story"
-RALPH_CHECKPOINT_LABEL="ralph-checkpoint"
+RALPH_RUNNING_LABEL="ralph-running"
+RALPH_COMPLETED_LABEL="ralph-completed"
+
+# Track if we're in the main loop (for cleanup)
+RUNNING_ISSUE=""
 
 # Colors
 RED='\033[0;31m'
@@ -53,180 +56,46 @@ print_error() {
   echo -e "${RED}[ralph]${NC} $1"
 }
 
+# Cleanup function - removes ralph-running label
+cleanup() {
+  if [ -n "$RUNNING_ISSUE" ]; then
+    print_status "Cleaning up..."
+    gh issue edit "$RUNNING_ISSUE" --remove-label "$RALPH_RUNNING_LABEL" 2>/dev/null || true
+    RUNNING_ISSUE=""
+  fi
+}
+
+# Trap signals for cleanup
+trap cleanup EXIT INT TERM
+
 usage() {
-  echo "Ralph Wiggum 2.0 - GitHub-Native AI Agent Loop"
+  echo "Ralph Wiggum 2.0 - GitHub Issue-Based AI Agent Loop"
   echo ""
   echo "Usage:"
-  echo "  ralph <issue-url|number> [max-iterations]  Run the autonomous loop"
-  echo "  ralph --new [feature-name]                 Interactive spec authoring"
-  echo "  ralph --status                             Show status of all specs"
-  echo ""
-  echo "Arguments:"
-  echo "  issue-url|number  GitHub issue URL or number (parent spec issue)"
-  echo "  max-iterations    Maximum loop iterations (default: 100)"
-  echo "  feature-name      Name for the new feature (optional)"
+  echo "  ralph <issue-number>        Run the autonomous loop on a spec issue"
+  echo "  ralph --new [feature-name]  Interactive spec authoring"
+  echo "  ralph --status              Show status of all ralph specs"
   echo ""
   echo "Environment variables:"
   echo "  RALPH_AGENT_CMD   Agent command (default: copilot)"
-  echo ""
-  echo "Labels used:"
-  echo "  $RALPH_LABEL          Parent spec issues"
-  echo "  $RALPH_STORY_LABEL        Story sub-issues"
-  echo "  $RALPH_CHECKPOINT_LABEL   E2E checkpoint sub-issues"
   exit 1
 }
 
-# ═══════════════════════════════════════════════════════════════════════════
-# GitHub utility functions
-# ═══════════════════════════════════════════════════════════════════════════
-
-# Get the current repo in owner/repo format
-gh_get_repo() {
+# Get current repo in owner/repo format
+get_repo() {
   gh repo view --json nameWithOwner --jq '.nameWithOwner'
 }
 
-# Create an issue and return its number
-# Usage: gh_create_issue "title" "body" "label1,label2"
-# Returns: issue number
-gh_create_issue() {
-  local title="$1"
-  local body="$2"
-  local labels="$3"
-
-  local url
-  if [ -n "$labels" ]; then
-    url=$(gh issue create --title "$title" --body "$body" --label "$labels")
-  else
-    url=$(gh issue create --title "$title" --body "$body")
+# Ensure ralph labels exist
+ensure_labels() {
+  if ! gh label list --json name --jq '.[].name' | grep -q "^${RALPH_LABEL}$"; then
+    gh label create "$RALPH_LABEL" --description "Ralph spec issue" --color "5319E7" 2>/dev/null || true
   fi
-
-  # Extract issue number from URL (e.g., https://github.com/owner/repo/issues/42 -> 42)
-  echo "$url" | grep -oP '/issues/\K[0-9]+'
-}
-
-# Get node ID from issue number
-# Usage: gh_get_issue_id 42
-gh_get_issue_id() {
-  local number="$1"
-  gh issue view "$number" --json id --jq '.id'
-}
-
-# Get issue number from URL or return as-is if already a number
-# Usage: gh_parse_issue_ref "https://github.com/owner/repo/issues/42" -> 42
-gh_parse_issue_ref() {
-  local ref="$1"
-  if [[ $ref =~ ^[0-9]+$ ]]; then
-    echo "$ref"
-  elif [[ $ref =~ /issues/([0-9]+) ]]; then
-    echo "${BASH_REMATCH[1]}"
-  else
-    print_error "Invalid issue reference: $ref"
-    exit 1
+  if ! gh label list --json name --jq '.[].name' | grep -q "^${RALPH_RUNNING_LABEL}$"; then
+    gh label create "$RALPH_RUNNING_LABEL" --description "Ralph is currently running" --color "FFA500" 2>/dev/null || true
   fi
-}
-
-# Link child as sub-issue of parent
-# Usage: gh_link_sub_issue "parent_node_id" "child_node_id"
-gh_link_sub_issue() {
-  local parent_id="$1"
-  local child_id="$2"
-
-  gh api graphql -f query='
-    mutation($parent: ID!, $child: ID!) {
-      addSubIssue(input: {issueId: $parent, subIssueId: $child}) {
-        subIssue { id }
-      }
-    }
-  ' -f parent="$parent_id" -f child="$child_id" --silent
-}
-
-# Get sub-issues of a parent issue
-# Usage: gh_get_sub_issues "parent_node_id"
-# Returns JSON array: [{id, number, title, state}, ...]
-gh_get_sub_issues() {
-  local parent_id="$1"
-
-  gh api graphql -f query='
-    query($id: ID!) {
-      node(id: $id) {
-        ... on Issue {
-          subIssues(first: 100) {
-            nodes {
-              id
-              number
-              title
-              state
-              labels(first: 10) {
-                nodes { name }
-              }
-            }
-          }
-        }
-      }
-    }
-  ' -f id="$parent_id" --jq '.data.node.subIssues.nodes'
-}
-
-# Get issue details
-# Usage: gh_get_issue 42
-gh_get_issue() {
-  local number="$1"
-  gh issue view "$number" --json id,number,title,body,state,labels
-}
-
-# Close an issue with a comment
-# Usage: gh_close_issue 42 "Completed: description of what was done"
-gh_close_issue() {
-  local number="$1"
-  local comment="$2"
-
-  if [ -n "$comment" ]; then
-    gh issue comment "$number" --body "$comment"
-  fi
-  gh issue close "$number"
-}
-
-# Add a comment to an issue
-# Usage: gh_add_comment 42 "Progress update..."
-gh_add_comment() {
-  local number="$1"
-  local body="$2"
-
-  gh issue comment "$number" --body "$body"
-}
-
-# Get recent comments from an issue
-# Usage: gh_get_comments 42 [limit]
-gh_get_comments() {
-  local number="$1"
-  local limit="${2:-5}"
-
-  gh issue view "$number" --json comments --jq ".comments | .[-${limit}:]"
-}
-
-# Check if labels exist, create if not
-gh_ensure_labels() {
-  local labels
-  labels=$(gh label list --json name --jq '.[].name')
-
-  # Check and create ralph-spec label
-  if ! echo "$labels" | grep -q "^${RALPH_LABEL}$"; then
-    gh label create "$RALPH_LABEL" --description "Ralph spec (parent issue)" --color "5319E7" 2>/dev/null || true
-  fi
-
-  # Check and create ralph-story label
-  if ! echo "$labels" | grep -q "^${RALPH_STORY_LABEL}$"; then
-    gh label create "$RALPH_STORY_LABEL" --description "Ralph story (sub-issue)" --color "0E8A16" 2>/dev/null || true
-  fi
-
-  # Check and create ralph-checkpoint label
-  if ! echo "$labels" | grep -q "^${RALPH_CHECKPOINT_LABEL}$"; then
-    gh label create "$RALPH_CHECKPOINT_LABEL" --description "Ralph E2E checkpoint" --color "D93F0B" 2>/dev/null || true
-  fi
-
-  # Check and create ralph-running label (for locking)
-  if ! echo "$labels" | grep -q "^ralph-running$"; then
-    gh label create "ralph-running" --description "Ralph is currently running on this spec" --color "FBCA04" 2>/dev/null || true
+  if ! gh label list --json name --jq '.[].name' | grep -q "^${RALPH_COMPLETED_LABEL}$"; then
+    gh label create "$RALPH_COMPLETED_LABEL" --description "Ralph completed all stories" --color "0E8A16" 2>/dev/null || true
   fi
 }
 
@@ -238,7 +107,7 @@ show_status() {
   print_header "Ralph Status"
 
   local repo
-  repo=$(gh_get_repo 2>/dev/null) || {
+  repo=$(get_repo 2>/dev/null) || {
     print_error "Not in a git repository or gh CLI not authenticated"
     exit 1
   }
@@ -248,7 +117,7 @@ show_status() {
 
   # Get all issues with ralph-spec label
   local specs
-  specs=$(gh issue list --label "$RALPH_LABEL" --state all --json number,title,state --jq '.[]' 2>/dev/null)
+  specs=$(gh issue list --label "$RALPH_LABEL" --state all --json number,title,state,body --jq '.[]' 2>/dev/null)
 
   if [ -z "$specs" ]; then
     echo "No ralph specs found in this repository."
@@ -256,44 +125,41 @@ show_status() {
     exit 0
   fi
 
-  # Process each spec
-  gh issue list --label "$RALPH_LABEL" --state all --json number,title,state | jq -c '.[]' | while read -r spec; do
-    local number title state
+  gh issue list --label "$RALPH_LABEL" --state all --json number,title,state,body,labels | jq -c '.[]' | while read -r spec; do
+    local number title state body labels
     number=$(echo "$spec" | jq -r '.number')
     title=$(echo "$spec" | jq -r '.title')
     state=$(echo "$spec" | jq -r '.state')
+    body=$(echo "$spec" | jq -r '.body')
+    labels=$(echo "$spec" | jq -r '.labels[].name' | tr '\n' ' ')
 
-    # Get parent node ID
-    local parent_id
-    parent_id=$(gh_get_issue_id "$number")
-
-    # Get sub-issues
-    local sub_issues
-    sub_issues=$(gh_get_sub_issues "$parent_id")
-
+    # Count checkboxes
     local total done
-    total=$(echo "$sub_issues" | jq 'length')
-    done=$(echo "$sub_issues" | jq '[.[] | select(.state == "CLOSED")] | length')
+    total=$(echo "$body" | grep -c '^\- \[.\]' || echo "0")
+    done=$(echo "$body" | grep -c '^\- \[x\]' || echo "0")
 
-    # Format state
+    # Format state based on labels and issue state
     local state_display
-    if [ "$state" = "OPEN" ]; then
-      if [ "$done" -eq "$total" ] && [ "$total" -gt 0 ]; then
-        state_display="${GREEN}READY TO CLOSE${NC}"
-      else
-        state_display="${CYAN}IN PROGRESS${NC}"
-      fi
-    else
+    if echo "$labels" | grep -q "$RALPH_RUNNING_LABEL"; then
+      state_display="${YELLOW}RUNNING${NC}"
+    elif echo "$labels" | grep -q "$RALPH_COMPLETED_LABEL"; then
       state_display="${GREEN}COMPLETED${NC}"
+    elif [ "$state" = "CLOSED" ]; then
+      state_display="${GREEN}CLOSED${NC}"
+    elif [ "$done" -eq "$total" ] && [ "$total" -gt 0 ]; then
+      state_display="${GREEN}READY TO CLOSE${NC}"
+    else
+      state_display="${CYAN}PENDING${NC}"
     fi
 
     echo -e "${BOLD}#$number: $title${NC} [$state_display]"
     echo -e "  Progress: ${GREEN}$done${NC}/${total} stories complete"
 
-    # Show remaining stories
-    if [ "$done" -lt "$total" ]; then
-      echo "  Remaining:"
-      echo "$sub_issues" | jq -r '.[] | select(.state == "OPEN") | "    - #\(.number): \(.title)"'
+    # Show next story
+    local next_story
+    next_story=$(echo "$body" | grep '^\- \[ \]' | head -1 | sed 's/^- \[ \] //')
+    if [ -n "$next_story" ]; then
+      echo -e "  Next: $next_story"
     fi
     echo ""
   done
@@ -302,138 +168,32 @@ show_status() {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Batch GitHub operations for fast issue creation
-# ═══════════════════════════════════════════════════════════════════════════
-
-# Get repository node ID (needed for GraphQL issue creation)
-gh_get_repo_id() {
-  gh repo view --json id --jq '.id'
-}
-
-# Batch create issues via GraphQL (much faster than sequential gh issue create)
-# Usage: gh_batch_create_issues "repo_id" "json_array_of_issues"
-# Input JSON format: [{"title": "...", "body": "...", "labels": ["label1"]}, ...]
-# Returns JSON: [{"id": "node_id", "number": 123}, ...]
-gh_batch_create_issues() {
-  local repo_id="$1"
-  local issues_json="$2"
-
-  local count
-  count=$(echo "$issues_json" | jq 'length')
-
-  if [ "$count" -eq 0 ]; then
-    echo "[]"
-    return
-  fi
-
-  # Build GraphQL mutation with multiple createIssue operations
-  local mutation="mutation {"
-  local variables=""
-
-  for i in $(seq 0 $((count - 1))); do
-    local title body labels_array label_ids
-    title=$(echo "$issues_json" | jq -r ".[$i].title")
-    body=$(echo "$issues_json" | jq -r ".[$i].body")
-    labels_array=$(echo "$issues_json" | jq -c ".[$i].labels // []")
-
-    # Convert label names to label IDs
-    label_ids=$(gh label list --json id,name | jq -c --argjson labels "$labels_array" '
-      [.[] | select(.name as $n | $labels | index($n)) | .id]
-    ')
-
-    mutation="$mutation
-      issue$i: createIssue(input: {
-        repositoryId: \"$repo_id\",
-        title: \"$(echo "$title" | sed 's/"/\\"/g')\",
-        body: \"$(echo "$body" | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')\",
-        labelIds: $label_ids
-      }) { issue { id number title } }"
-  done
-
-  mutation="$mutation
-    }"
-
-  # Execute the batch mutation
-  local result
-  result=$(gh api graphql -f query="$mutation" 2>&1)
-
-  if [ $? -ne 0 ]; then
-    print_error "Batch issue creation failed: $result"
-    return 1
-  fi
-
-  # Extract issue IDs and numbers from result
-  echo "$result" | jq '[.data | to_entries[] | {id: .value.issue.id, number: .value.issue.number, title: .value.issue.title}]'
-}
-
-# Batch link issues as sub-issues via GraphQL
-# Usage: gh_batch_link_sub_issues "parent_id" "json_array_of_child_ids"
-gh_batch_link_sub_issues() {
-  local parent_id="$1"
-  local children_json="$2"
-
-  local count
-  count=$(echo "$children_json" | jq 'length')
-
-  if [ "$count" -eq 0 ]; then
-    return 0
-  fi
-
-  # Build GraphQL mutation with multiple addSubIssue operations
-  local mutation="mutation {"
-
-  for i in $(seq 0 $((count - 1))); do
-    local child_id
-    child_id=$(echo "$children_json" | jq -r ".[$i]")
-
-    mutation="$mutation
-      link$i: addSubIssue(input: {issueId: \"$parent_id\", subIssueId: \"$child_id\"}) {
-        subIssue { id }
-      }"
-  done
-
-  mutation="$mutation
-    }"
-
-  # Execute the batch mutation
-  gh api graphql -f query="$mutation" --silent
-}
-
-# ═══════════════════════════════════════════════════════════════════════════
-# New spec command (interactive) - Creates GitHub Issues
+# New spec command
 # ═══════════════════════════════════════════════════════════════════════════
 
 new_spec() {
   local feature_name="${1:-}"
 
-  print_header "New Spec - Interactive Mode (GitHub Issues)"
+  print_header "New Spec - Interactive Mode"
 
-  # Ensure we're in a repo and labels exist
-  local repo repo_id
-  repo=$(gh_get_repo 2>/dev/null) || {
+  local repo
+  repo=$(get_repo 2>/dev/null) || {
     print_error "Not in a git repository or gh CLI not authenticated"
     exit 1
   }
-  repo_id=$(gh_get_repo_id)
 
   print_status "Repository: $repo"
-  gh_ensure_labels
+  ensure_labels
 
   if [ -n "$feature_name" ]; then
     print_status "Feature name: $feature_name"
-  else
-    print_status "The agent will help you name the feature."
   fi
 
   echo ""
 
-  # Temp file for spec JSON output
-  SPEC_JSON_FILE=$(mktemp /tmp/ralph-spec-XXXXXX.json)
-  trap "rm -f $SPEC_JSON_FILE" EXIT
-
-  # Generate the spec authoring prompt - outputs JSON instead of running commands
-  read -r -d '' PROMPT <<PROMPT_END || true
-You are a product manager helping to create a feature specification. Your job is to interview the user, understand what they want to build, and output a structured JSON spec.
+  # Prompt for the agent
+  read -r -d '' PROMPT <<'PROMPT_END' || true
+You are a product manager helping to create a feature specification. Your job is to interview the user, understand what they want to build, and create a GitHub issue with the spec.
 
 # Your Task
 
@@ -445,210 +205,301 @@ You are a product manager helping to create a feature specification. Your job is
    - **Success Criteria:** How do we know it's done?
 
 3. Format questions with lettered options for quick responses:
-   \`\`\`
+   ```
    1. What is the primary goal?
       A. Improve user experience
       B. Add new capability
       C. Fix existing pain point
       D. Other: [please specify]
-   \`\`\`
-   This lets users respond with "1A, 2C, 3B" quickly.
+   ```
 
-4. After gathering answers, generate the spec as JSON and save it.
+4. After gathering answers, create the GitHub issue.
 
-# Output Format
+# Issue Format
 
-After the interview, write a JSON file to: $SPEC_JSON_FILE
+Create an issue with this structure:
 
-\`\`\`json
-{
-  "parent": {
-    "title": "Feature Name",
-    "body": "## Overview\\n...\\n\\n## Branch\\n\\\`ralph/feature-name\\\`\\n\\n## Goals\\n- ...\\n\\n## Non-Goals\\n- ...",
-    "labels": ["$RALPH_LABEL"]
-  },
-  "stories": [
-    {
-      "title": "US-001: Story title",
-      "body": "## Description\\nAs a user, I want...\\n\\n## Acceptance Criteria\\n- [ ] Criterion 1\\n- [ ] Typecheck passes",
-      "labels": ["$RALPH_STORY_LABEL"],
-      "isCheckpoint": false
-    },
-    {
-      "title": "CHECKPOINT: Verify backend works",
-      "body": "## Description\\nVerify...\\n\\n## Verification Steps\\n- [ ] Step 1",
-      "labels": ["$RALPH_STORY_LABEL", "$RALPH_CHECKPOINT_LABEL"],
-      "isCheckpoint": true
-    }
-  ]
-}
-\`\`\`
+**Title:** `[Feature Name]`
+**Label:** `ralph-spec`
 
-# Story Sizing Rules
+**Body:**
+```markdown
+## Overview
+Brief description of the feature and the problem it solves.
 
-Each story must be completable in ONE iteration (one context window).
+## Branch
+`ralph/[feature-name-kebab-case]`
 
-**Right-sized stories:**
-- Add a database column and migration
-- Add a UI component to an existing page
-- Add an API endpoint with basic logic
+## Stories
 
-**Too big (split these):**
-- "Build the entire dashboard" → Split into: schema, queries, components
-- "Add authentication" → Split into: schema, middleware, login UI, sessions
+- [ ] US-001: [Story title] - [Brief description]
+- [ ] US-002: [Story title] - [Brief description]
+- [ ] CHECKPOINT: Verify [what to verify]
+- [ ] US-003: [Story title] - [Brief description]
+- [ ] E2E-FINAL: Validate complete feature
 
-# Story Ordering & Checkpoints
+## Non-Goals
+What this feature will NOT include.
+```
 
-Order stories by dependency AND add checkpoints at integration points:
+# Story Rules
 
-1. Schema/database changes
-2. Backend/server logic
-3. **CHECKPOINT: Verify backend works** (after backend stories)
+**Sizing:** Each story must be completable in ONE agent session.
+- Good: "Add users table", "Add signup API endpoint", "Add signup form"
+- Too big: "Add authentication" → split into multiple stories
+
+**Ordering:** Stories are processed IN ORDER. Place checkpoints where verification should happen:
+1. Database/schema changes first
+2. Backend/API logic
+3. CHECKPOINT: Verify backend works
 4. UI components
-5. **CHECKPOINT: Verify full flow E2E** (after UI stories)
-6. **E2E-FINAL: Complete feature validation** (always last)
+5. CHECKPOINT: Verify UI works
+6. E2E-FINAL: Always last
+
+**Checkpoints:** These verify previous work before continuing. They run Playwright (web) or Maestro (mobile) tests.
+
+# Creating the Issue
+
+Use this command:
+```bash
+gh issue create --title "Feature Name" --label "ralph-spec" --body "..."
+```
+
+After creating, tell the user the issue number so they can run `ralph <number>`.
 
 # Important
 
-- Do NOT implement anything - just create the JSON spec and issues
-- Ask questions FIRST, then generate the JSON
+- Do NOT implement anything - just create the spec issue
+- Ask questions FIRST, then create the issue
+- Stories are processed in order - checkpoint placement matters
 - Keep stories small and focused
-- Always include checkpoints at integration points
-- Always end with E2E-FINAL checkpoint
-- Escape newlines as \\n in JSON strings
-- The JSON must be valid - test it mentally before writing
-
-# CRITICAL: Creating the Issues
-
-After the interview, you must:
-
-1. Write the JSON spec to: $SPEC_JSON_FILE
-2. Run this command to create the GitHub issues:
-   \`\`\`bash
-   ralph --create-from-spec $SPEC_JSON_FILE
-   \`\`\`
-
-This command will batch-create all issues and link them as sub-issues.
-Do BOTH steps - write the file AND run the command.
 PROMPT_END
 
-  # Add feature name hint if provided
   if [ -n "$feature_name" ]; then
     PROMPT="$PROMPT
 
 The user wants to build a feature called: $feature_name"
   fi
 
-  # Run the agent interactively
-  print_status "Starting interview..."
-  echo ""
   $AGENT_CMD -i "$PROMPT"
-
   exit 0
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Create from spec command (called by agent after writing JSON)
+# Parse issue for stories
 # ═══════════════════════════════════════════════════════════════════════════
 
-create_from_spec() {
-  local spec_file="$1"
+# Get the next unchecked story from issue body
+# Returns: "index|title" or empty if all done
+get_next_story() {
+  local body="$1"
+  local index=0
 
-  if [ -z "$spec_file" ]; then
-    print_error "Usage: ralph --create-from-spec <json-file>"
-    exit 1
-  fi
+  while IFS= read -r line; do
+    if echo "$line" | grep -q '^\- \[ \]'; then
+      local title
+      title=$(echo "$line" | sed 's/^- \[ \] //')
+      echo "$index|$title"
+      return 0
+    fi
+    if echo "$line" | grep -q '^\- \[.\]'; then
+      index=$((index + 1))
+    fi
+  done <<< "$body"
 
-  if [ ! -f "$spec_file" ]; then
-    print_error "Spec file not found: $spec_file"
-    exit 1
-  fi
-
-  # Validate JSON
-  if ! jq empty "$spec_file" 2>/dev/null; then
-    print_error "Invalid JSON in spec file"
-    cat "$spec_file"
-    exit 1
-  fi
-
-  # Get repo info
-  local repo repo_id
-  repo=$(gh_get_repo 2>/dev/null) || {
-    print_error "Not in a git repository or gh CLI not authenticated"
-    exit 1
-  }
-  repo_id=$(gh_get_repo_id)
-
-  gh_ensure_labels
-
-  print_header "Creating GitHub Issues"
-
-  # Extract parent and stories from JSON
-  local parent_json stories_json
-  parent_json=$(jq '.parent' "$spec_file")
-  stories_json=$(jq '.stories' "$spec_file")
-
-  local parent_title story_count
-  parent_title=$(echo "$parent_json" | jq -r '.title')
-  story_count=$(echo "$stories_json" | jq 'length')
-
-  print_status "Creating parent issue: $parent_title"
-  print_status "Creating $story_count story issues..."
-
-  # Step 1: Create parent issue
-  local parent_result parent_id parent_number
-  parent_result=$(gh_batch_create_issues "$repo_id" "[$parent_json]")
-  parent_id=$(echo "$parent_result" | jq -r '.[0].id')
-  parent_number=$(echo "$parent_result" | jq -r '.[0].number')
-
-  if [ -z "$parent_id" ] || [ "$parent_id" = "null" ]; then
-    print_error "Failed to create parent issue"
-    exit 1
-  fi
-
-  print_status "Created parent issue #$parent_number"
-
-  # Step 2: Batch create all story issues
-  print_status "Batch creating $story_count stories..."
-  local stories_result
-  stories_result=$(gh_batch_create_issues "$repo_id" "$stories_json")
-
-  if [ $? -ne 0 ]; then
-    print_error "Failed to create story issues"
-    exit 1
-  fi
-
-  local created_count
-  created_count=$(echo "$stories_result" | jq 'length')
-  print_status "Created $created_count story issues"
-
-  # Step 3: Batch link all stories as sub-issues
-  print_status "Linking stories to parent..."
-  local child_ids
-  child_ids=$(echo "$stories_result" | jq '[.[].id]')
-
-  gh_batch_link_sub_issues "$parent_id" "$child_ids"
-
-  if [ $? -ne 0 ]; then
-    print_error "Failed to link some sub-issues (they were still created)"
-  fi
-
-  print_status "Linked $created_count stories as sub-issues"
-
-  # Summary
-  print_header "Spec Created Successfully"
   echo ""
-  echo -e "  ${BOLD}Parent Issue:${NC} #$parent_number - $parent_title"
-  echo -e "  ${BOLD}Stories:${NC} $created_count"
-  echo ""
-  echo -e "  ${CYAN}View:${NC} gh issue view $parent_number"
-  echo -e "  ${CYAN}Run:${NC}  ralph $parent_number"
-  echo ""
+}
 
-  # Show created stories
-  echo "$stories_result" | jq -r '.[] | "  - #\(.number): \(.title)"'
+# Check if a story title indicates it's a checkpoint
+is_checkpoint() {
+  local title="$1"
+  echo "$title" | grep -qi "checkpoint\|e2e-final\|verify\|validate"
+}
 
-  exit 0
+# Mark a story as complete by updating issue body
+mark_story_complete() {
+  local issue_number="$1"
+  local story_index="$2"
+
+  local body
+  body=$(gh issue view "$issue_number" --json body --jq '.body')
+
+  # Replace the nth unchecked checkbox with checked
+  local count=0
+  local new_body=""
+  while IFS= read -r line; do
+    if echo "$line" | grep -q '^\- \[ \]' && [ "$count" -eq "$story_index" ]; then
+      line=$(echo "$line" | sed 's/^\- \[ \]/- [x]/')
+    fi
+    if echo "$line" | grep -q '^\- \[.\]'; then
+      count=$((count + 1))
+    fi
+    new_body="$new_body$line
+"
+  done <<< "$body"
+
+  gh issue edit "$issue_number" --body "$new_body"
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Generate prompts
+# ═══════════════════════════════════════════════════════════════════════════
+
+generate_story_prompt() {
+  local issue_number="$1"
+  local issue_title="$2"
+  local story_title="$3"
+  local branch_name="$4"
+  local completed_stories="$5"
+  local repo="$6"
+
+  cat <<PROMPT_END
+You are an autonomous coding agent working on a software project.
+
+# Context
+
+**Feature:** $issue_title
+**Branch:** $branch_name
+**Repository:** $repo
+**Spec Issue:** #$issue_number
+
+## Completed Stories
+$completed_stories
+
+# Your Task
+
+Implement this story: **$story_title**
+
+## Instructions
+
+1. Make sure you're on branch \`$branch_name\`. Create it from main if it doesn't exist.
+2. Implement the story - keep changes focused and minimal.
+3. Run quality checks (typecheck, lint, tests as appropriate).
+4. Commit with message: \`feat: $story_title (#$issue_number)\`
+5. Add a comment to issue #$issue_number summarizing what you did.
+
+## Adding Progress Comment
+
+When done, add a comment:
+\`\`\`bash
+gh issue comment $issue_number --body "## $story_title
+
+**Implemented:**
+- What was built
+
+**Files changed:**
+- list files
+
+**Notes:**
+- Any patterns or gotchas for future stories"
+\`\`\`
+
+## Quality Requirements
+
+- All commits must pass quality checks
+- Do NOT commit broken code
+- Follow existing code patterns
+- Keep changes minimal and focused
+
+## Important
+
+- Work on THIS story only
+- Do not modify other stories or the spec
+- If blocked, add a comment explaining why
+PROMPT_END
+}
+
+generate_checkpoint_prompt() {
+  local issue_number="$1"
+  local issue_title="$2"
+  local story_title="$3"
+  local branch_name="$4"
+  local completed_stories="$5"
+  local repo="$6"
+
+  cat <<PROMPT_END
+You are an autonomous coding agent performing E2E validation.
+
+# Context
+
+**Feature:** $issue_title
+**Branch:** $branch_name
+**Repository:** $repo
+**Spec Issue:** #$issue_number
+
+## Completed Stories
+$completed_stories
+
+# Your Task: CHECKPOINT
+
+**$story_title**
+
+Verify that the implemented stories work correctly end-to-end.
+
+## E2E Testing Setup
+
+### Step 1: Detect Package Manager
+
+Check which lockfile exists:
+- \`bun.lockb\` → use \`bunx\`
+- \`pnpm-lock.yaml\` → use \`pnpm dlx\`
+- \`yarn.lock\` → use \`yarn dlx\`
+- \`package-lock.json\` or none → use \`npx\`
+
+### Step 2: For Web Apps (Next.js, React, etc.)
+
+Use Playwright:
+\`\`\`bash
+# Install if needed
+[runner] playwright install chromium
+
+# Write test in e2e/ directory
+# Run: [runner] playwright test e2e/checkpoint-xxx.spec.ts
+\`\`\`
+
+### Step 3: For React Native / Expo
+
+**If web-compatible (no native modules):**
+- Run \`[runner] expo start --web\`
+- Use Playwright against localhost
+
+**If using custom dev client (native modules):**
+Use Maestro:
+\`\`\`bash
+# Install if needed
+curl -Ls "https://get.maestro.mobile.dev" | bash
+
+# Write flow in e2e/ directory
+# Run: maestro test e2e/checkpoint-xxx.yaml
+\`\`\`
+
+## Save Tests to Repo
+
+Save test files to \`e2e/\` directory and commit them - they become regression tests.
+
+## If Checkpoint Passes
+
+Add a comment and you're done:
+\`\`\`bash
+gh issue comment $issue_number --body "## ✅ $story_title
+
+**Verified:**
+- What was tested
+- What passed"
+\`\`\`
+
+## If Issues Found
+
+1. Add a comment describing the problems
+2. Do NOT mark this checkpoint complete
+3. The next run will retry this checkpoint after issues are fixed
+
+## Important
+
+- This is VERIFICATION, not implementation
+- Actually run the app and test it
+- Be thorough - check edge cases
+PROMPT_END
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -663,682 +514,136 @@ if [ "$1" = "--status" ]; then
   show_status
 fi
 
-if [ "$1" = "--create-from-spec" ]; then
-  create_from_spec "$2"
-fi
-
 if [ "$1" = "--new" ]; then
   new_spec "$2"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Main loop mode - expect an issue reference
+# Main loop
 # ═══════════════════════════════════════════════════════════════════════════
 
-ISSUE_REF="$1"
-MAX_ITERATIONS=${2:-100}
+ISSUE_NUMBER="$1"
+MAX_ITERATIONS="${2:-100}"
 
-# Parse issue reference
-PARENT_NUMBER=$(gh_parse_issue_ref "$ISSUE_REF")
-
-# Verify we're in a repo
-REPO=$(gh_get_repo 2>/dev/null) || {
+# Verify repo
+REPO=$(get_repo 2>/dev/null) || {
   print_error "Not in a git repository or gh CLI not authenticated"
   exit 1
 }
 
-# Ensure labels exist
-gh_ensure_labels
-
-# Verify the issue exists and has the right label
-PARENT_ISSUE=$(gh_get_issue "$PARENT_NUMBER" 2>/dev/null) || {
-  print_error "Issue #$PARENT_NUMBER not found"
+# Get issue details
+ISSUE=$(gh issue view "$ISSUE_NUMBER" --json number,title,body,state,labels 2>/dev/null) || {
+  print_error "Issue #$ISSUE_NUMBER not found"
   exit 1
 }
 
-PARENT_LABELS=$(echo "$PARENT_ISSUE" | jq -r '.labels[].name' | tr '\n' ',')
-if [[ ! $PARENT_LABELS =~ $RALPH_LABEL ]]; then
-  print_warning "Issue #$PARENT_NUMBER doesn't have the '$RALPH_LABEL' label"
-  print_warning "Adding label..."
-  gh issue edit "$PARENT_NUMBER" --add-label "$RALPH_LABEL"
+ISSUE_TITLE=$(echo "$ISSUE" | jq -r '.title')
+ISSUE_BODY=$(echo "$ISSUE" | jq -r '.body')
+ISSUE_STATE=$(echo "$ISSUE" | jq -r '.state')
+
+if [ "$ISSUE_STATE" = "CLOSED" ]; then
+  print_error "Issue #$ISSUE_NUMBER is closed"
+  exit 1
 fi
 
-PARENT_TITLE=$(echo "$PARENT_ISSUE" | jq -r '.title')
-PARENT_BODY=$(echo "$PARENT_ISSUE" | jq -r '.body')
-PARENT_ID=$(echo "$PARENT_ISSUE" | jq -r '.id')
-
-# Extract branch name from issue body (looks for "Branch: `ralph/...`" or "## Branch\n`ralph/...`")
-BRANCH_NAME=$(echo "$PARENT_BODY" | grep -oP '(?<=Branch[:\s]*`)[^`]+' | head -1 || echo "")
+# Extract branch name from issue body
+BRANCH_NAME=$(echo "$ISSUE_BODY" | grep -o '`ralph/[^`]*`' | head -1 | tr -d '`' || echo "")
 if [ -z "$BRANCH_NAME" ]; then
-  # Generate from title
-  BRANCH_NAME="ralph/$(echo "$PARENT_TITLE" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')"
+  BRANCH_NAME="ralph/$(echo "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')"
 fi
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Lock mechanism (using issue labels to prevent concurrent runs)
-# ═══════════════════════════════════════════════════════════════════════════
+# Ensure labels exist
+ensure_labels
 
-LOCK_LABEL="ralph-running"
-
-# Check if already running
-if echo "$PARENT_LABELS" | grep -q "$LOCK_LABEL"; then
-  print_error "Another ralph instance appears to be running on this spec"
-  print_error "If this is stale, remove the '$LOCK_LABEL' label from issue #$PARENT_NUMBER"
-  exit 1
+# Add spec label if missing
+if ! echo "$ISSUE" | jq -r '.labels[].name' | grep -q "^${RALPH_LABEL}$"; then
+  gh issue edit "$ISSUE_NUMBER" --add-label "$RALPH_LABEL" 2>/dev/null || true
 fi
 
-# Add lock label
-gh issue edit "$PARENT_NUMBER" --add-label "$LOCK_LABEL" 2>/dev/null || true
-
-# Cleanup function to remove lock
-cleanup() {
-  gh issue edit "$PARENT_NUMBER" --remove-label "$LOCK_LABEL" 2>/dev/null || true
-}
-trap cleanup EXIT
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Generate iteration prompt with context
-# ═══════════════════════════════════════════════════════════════════════════
-
-generate_prompt() {
-  local story_number="$1"
-  local story_title="$2"
-  local story_body="$3"
-  local is_checkpoint="$4"
-  local recent_comments="$5"
-  local git_diff_stat="$6"
-  local completed_stories="$7"
-
-  if [ "$is_checkpoint" = "true" ]; then
-    cat <<PROMPT_END
-You are an autonomous coding agent performing E2E validation on a software project.
-
-# Context
-
-**Feature:** $PARENT_TITLE
-**Branch:** $BRANCH_NAME
-**Repository:** $REPO
-
-## Completed Stories
-$completed_stories
-
-## Git Changes in This Branch
-\`\`\`
-$git_diff_stat
-\`\`\`
-
-## Recent Progress
-$recent_comments
-
-# Your Task: E2E CHECKPOINT
-
-**Issue:** #$story_number - $story_title
-
-$story_body
-
-## Instructions
-
-1. Ensure you're on branch \`$BRANCH_NAME\`
-2. Detect project type and set up E2E tooling (see below)
-3. Run the application and verify the flow
-4. Document what works and what doesn't
-
-## E2E Tooling Setup
-
-### Step 1: Detect Package Manager
-
-Check which lockfile exists and use the corresponding runner:
-- \`bun.lockb\` → use \`bunx\`
-- \`pnpm-lock.yaml\` → use \`pnpm dlx\`
-- \`yarn.lock\` → use \`yarn dlx\`
-- \`package-lock.json\` or none → use \`npx\`
-
-### Step 2: Ensure Playwright is Available
-
-For web apps (Next.js, React, Vue, etc.):
-\`\`\`bash
-# Check if playwright is available, install if not
-if ! command -v playwright &> /dev/null && ! [runner] playwright --version &> /dev/null; then
-  [runner] playwright install chromium
-fi
-\`\`\`
-
-Replace \`[runner]\` with the detected runner (bunx, npx, etc.).
-
-### Step 3: Run E2E Verification
-
-**File locations:**
-- E2E scripts go in the repo: \`e2e/\` directory (create if needed)
-- Screenshots go to: \`~/.ralph/screenshots/$REPO/$story_number/\`
-
-Write a Playwright test in the repo:
-\`\`\`typescript
-// e2e/checkpoint-$story_number.spec.ts
-import { test, expect } from '@playwright/test';
-
-test('$story_title', async ({ page }) => {
-  // Navigate to the app
-  await page.goto('http://localhost:3000');
-
-  // Perform verification steps from the checkpoint criteria
-  // Use assertions to verify behavior
-  await expect(page.locator('...')).toBeVisible();
-
-  // Save screenshot for reference (outside repo)
-  await page.screenshot({
-    path: \`\${process.env.HOME}/.ralph/screenshots/$REPO/$story_number/checkpoint.png\`,
-    fullPage: true
-  });
-});
-\`\`\`
-
-Run with: \`[runner] playwright test e2e/checkpoint-$story_number.spec.ts\`
-
-**Commit the test file** - it becomes a regression test:
-\`\`\`bash
-git add e2e/
-git commit -m "test: add e2e test for #$story_number"
-\`\`\`
-
-### For React Native / Expo
-
-Detect which approach to use:
-
-**A. If web-compatible (no native modules or using Expo Go):**
-1. Use Expo's web export: \`[runner] expo start --web\`
-2. Run Playwright against http://localhost:8081
-
-**B. If using custom dev client (native modules):**
-
-Use **Maestro** for native E2E testing:
-\`\`\`bash
-# Install Maestro if not available
-if ! command -v maestro &> /dev/null; then
-  curl -Ls "https://get.maestro.mobile.dev" | bash
-  export PATH="\$PATH:\$HOME/.maestro/bin"
-fi
-
-# Start the app on simulator (iOS example)
-[runner] expo run:ios --device "iPhone 15"
-
-# Or for Android
-[runner] expo run:android
-\`\`\`
-
-Write a Maestro flow file in the repo:
-\`\`\`yaml
-# e2e/checkpoint-$story_number.yaml
-appId: com.yourapp.id  # from app.json
----
-- launchApp
-- assertVisible: "Expected Text"
-- tapOn: "Button Text"
-- takeScreenshot: ~/.ralph/screenshots/$REPO/$story_number/checkpoint
-\`\`\`
-
-Run with: \`maestro test e2e/checkpoint-$story_number.yaml\`
-
-**Commit the flow file** - it becomes a regression test:
-\`\`\`bash
-git add e2e/
-git commit -m "test: add maestro flow for #$story_number"
-\`\`\`
-
-**C. If neither works (complex native setup):**
-Document what needs manual verification and why automated testing isn't possible.
-
-## Screenshots
-
-Screenshots are saved outside the repo for reference:
-\`~/.ralph/screenshots/$REPO/$story_number/\`
-
-Create the directory if needed:
-\`\`\`bash
-mkdir -p ~/.ralph/screenshots/$REPO/$story_number
-\`\`\`
-
-## If Everything Passes
-
-Close this issue with a summary of what was actually verified:
-\`\`\`bash
-gh issue close $story_number --comment "✅ Checkpoint passed
-
-**Verified:**
-- [specific user flow that was tested]
-- [what was confirmed working]
-- [edge cases checked]"
-\`\`\`
-
-## If Issues Found
-
-1. Add a comment to this issue describing the problems found
-2. Create new story issues to fix the problems:
-   \`\`\`bash
-   gh issue create --title "FIX-XXX: [description]" --body "..." --label "$RALPH_STORY_LABEL"
-   \`\`\`
-3. Link them as sub-issues to the parent (#$PARENT_NUMBER):
-   \`\`\`bash
-   PARENT_ID=\$(gh issue view $PARENT_NUMBER --json id --jq '.id')
-   CHILD_ID=\$(gh issue view [NEW_ISSUE_NUMBER] --json id --jq '.id')
-   gh api graphql -f query='mutation(\$p: ID!, \$c: ID!) { addSubIssue(input: {issueId: \$p, subIssueId: \$c}) { subIssue { id } } }' -f p="\$PARENT_ID" -f c="\$CHILD_ID"
-   \`\`\`
-4. Do NOT close this checkpoint - it will be re-run after fixes
-
-## Important
-
-- This is a VERIFICATION task, not implementation
-- Test the actual running application
-- Take screenshots as evidence
-- Be thorough - check edge cases
-- If the dev server isn't running, start it
-- Clean up any test files after verification (except screenshots)
-PROMPT_END
-  else
-    cat <<PROMPT_END
-You are an autonomous coding agent working on a software project.
-
-# Context
-
-**Feature:** $PARENT_TITLE
-**Branch:** $BRANCH_NAME
-**Repository:** $REPO
-
-## What's Been Done
-$completed_stories
-
-## Git Changes in This Branch
-\`\`\`
-$git_diff_stat
-\`\`\`
-
-## Recent Progress Notes
-$recent_comments
-
-# Your Task: Implement Story
-
-**Issue:** #$story_number - $story_title
-
-$story_body
-
-## Instructions
-
-1. Ensure you're on branch \`$BRANCH_NAME\`. If it doesn't exist, create it from main.
-2. Read the acceptance criteria carefully
-3. Implement the story - keep changes focused and minimal
-4. Run quality checks (typecheck, lint, tests)
-5. Commit with message: \`feat(#$story_number): $story_title\`
-6. Close the issue with a progress comment
-
-## Closing the Issue
-
-When done, close with a summary:
-\`\`\`bash
-gh issue close $story_number --comment "$(
-      cat <<'EOF'
-## Completed
-
-**Implemented:**
-- What was built
-
-**Files changed:**
-- file1.ts
-- file2.ts
-
-**Notes for next iteration:**
-- Any patterns discovered
-- Things to watch out for
-EOF
-    )"
-\`\`\`
-
-## Quality Requirements
-
-- ALL commits must pass quality checks
-- Do NOT commit broken code
-- Follow existing code patterns
-- Keep changes minimal and focused
-
-## Important
-
-- Work on THIS story only
-- Do not modify other issues
-- If blocked, add a comment explaining why and stop
-PROMPT_END
-  fi
-}
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Main loop
-# ═══════════════════════════════════════════════════════════════════════════
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Analytics tracking
-# ═══════════════════════════════════════════════════════════════════════════
-
-RUN_START_TIME=$(date +%s)
-TOTAL_TOKENS_IN=0
-TOTAL_TOKENS_OUT=0
-TOTAL_TOKENS=0
-ITERATION_TIMES=()
-STORIES_COMPLETED_THIS_RUN=0
-
-# Helper to format duration
-format_duration() {
-  local seconds=$1
-  local hours=$((seconds / 3600))
-  local minutes=$(((seconds % 3600) / 60))
-  local secs=$((seconds % 60))
-  if [ "$hours" -gt 0 ]; then
-    printf "%dh %dm %ds" "$hours" "$minutes" "$secs"
-  elif [ "$minutes" -gt 0 ]; then
-    printf "%dm %ds" "$minutes" "$secs"
-  else
-    printf "%ds" "$secs"
-  fi
-}
-
-# Helper to extract tokens from agent output
-# Looks for common patterns like "tokens: X", "input_tokens: X", etc.
-extract_tokens() {
-  local output="$1"
-  local tokens_in=0
-  local tokens_out=0
-
-  # Try to find input tokens (various patterns)
-  local in_match
-  in_match=$(echo "$output" | grep -oiE '(input_tokens|prompt_tokens|input tokens)[:\s]*[0-9,]+' | grep -oE '[0-9,]+' | tr -d ',' | tail -1)
-  if [ -n "$in_match" ]; then
-    tokens_in=$in_match
-  fi
-
-  # Try to find output tokens
-  local out_match
-  out_match=$(echo "$output" | grep -oiE '(output_tokens|completion_tokens|output tokens)[:\s]*[0-9,]+' | grep -oE '[0-9,]+' | tr -d ',' | tail -1)
-  if [ -n "$out_match" ]; then
-    tokens_out=$out_match
-  fi
-
-  # If no breakdown, try total tokens
-  if [ "$tokens_in" -eq 0 ] && [ "$tokens_out" -eq 0 ]; then
-    local total_match
-    total_match=$(echo "$output" | grep -oiE '(total_tokens|tokens)[:\s]*[0-9,]+' | grep -oE '[0-9,]+' | tr -d ',' | tail -1)
-    if [ -n "$total_match" ]; then
-      echo "0 0 $total_match"
-      return
-    fi
-  fi
-
-  echo "$tokens_in $tokens_out $((tokens_in + tokens_out))"
-}
-
-# Print analytics summary
-print_analytics() {
-  local end_time=$1
-  local iterations=$2
-  local stories_done=$3
-
-  local total_duration=$((end_time - RUN_START_TIME))
-
-  print_header "Run Analytics"
-
-  echo ""
-  echo -e "${BOLD}Time${NC}"
-  echo -e "  Total duration:      $(format_duration $total_duration)"
-
-  if [ "$iterations" -gt 0 ]; then
-    local avg_iteration=$((total_duration / iterations))
-    echo -e "  Iterations:          $iterations"
-    echo -e "  Avg per iteration:   $(format_duration $avg_iteration)"
-  fi
-
-  if [ "$stories_done" -gt 0 ]; then
-    local avg_story=$((total_duration / stories_done))
-    echo -e "  Stories completed:   $stories_done"
-    echo -e "  Avg per story:       $(format_duration $avg_story)"
-  fi
-
-  echo ""
-  echo -e "${BOLD}Tokens${NC}"
-  if [ "$TOTAL_TOKENS" -gt 0 ]; then
-    if [ "$TOTAL_TOKENS_IN" -gt 0 ] || [ "$TOTAL_TOKENS_OUT" -gt 0 ]; then
-      printf "  Input tokens:        %'d\n" "$TOTAL_TOKENS_IN"
-      printf "  Output tokens:       %'d\n" "$TOTAL_TOKENS_OUT"
-    fi
-    printf "  Total tokens:        %'d\n" "$TOTAL_TOKENS"
-    if [ "$iterations" -gt 0 ]; then
-      local avg_tokens=$((TOTAL_TOKENS / iterations))
-      printf "  Avg per iteration:   %'d\n" "$avg_tokens"
-    fi
-  else
-    echo "  (token data not available from agent)"
-  fi
-
-  echo ""
-}
-
-print_header "Starting Ralph Wiggum 2.0"
+# Add running label and set up cleanup (remove completed if re-running)
+RUNNING_ISSUE="$ISSUE_NUMBER"
+gh issue edit "$ISSUE_NUMBER" --add-label "$RALPH_RUNNING_LABEL" --remove-label "$RALPH_COMPLETED_LABEL" 2>/dev/null || true
+
+print_header "Starting Ralph"
 print_status "Repository: $REPO"
-print_status "Spec: #$PARENT_NUMBER - $PARENT_TITLE"
+print_status "Issue: #$ISSUE_NUMBER - $ISSUE_TITLE"
 print_status "Branch: $BRANCH_NAME"
 print_status "Max iterations: $MAX_ITERATIONS"
-print_status "Agent: $AGENT_CMD"
-print_status "Started: $(date)"
 
-# Get initial sub-issues status
-SUB_ISSUES=$(gh_get_sub_issues "$PARENT_ID")
-INITIAL_DONE=$(echo "$SUB_ISSUES" | jq '[.[] | select(.state == "CLOSED")] | length')
-TOTAL=$(echo "$SUB_ISSUES" | jq 'length')
-DONE=$(echo "$SUB_ISSUES" | jq '[.[] | select(.state == "CLOSED")] | length')
-
-# Check if there are no sub-issues
-if [ "$TOTAL" -eq 0 ]; then
-  print_warning "No sub-issues found for this spec!"
-  print_status "Would you like to generate stories from the spec? (y/n)"
-  read -r response
-  if [[ $response =~ ^[Yy] ]]; then
-    print_status "Generating stories from spec..."
-
-    # Generate stories from the parent issue body
-    read -r -d '' GENERATE_PROMPT <<GENERATE_END || true
-You are a product manager helping to break down a feature specification into stories.
-
-# Parent Spec Issue
-
-**Title:** $PARENT_TITLE
-**Issue:** #$PARENT_NUMBER
-
-**Body:**
-$PARENT_BODY
-
-# Your Task
-
-Analyze this spec and create individual story issues as sub-issues.
-
-## Rules
-
-1. Each story must be completable in ONE iteration (one context window)
-2. Order by dependency: database → backend → UI
-3. Include checkpoints at integration points
-4. Always end with E2E-FINAL checkpoint
-5. Use label \`$RALPH_STORY_LABEL\` for stories
-6. Use labels \`$RALPH_STORY_LABEL,$RALPH_CHECKPOINT_LABEL\` for checkpoints
-
-## Creating and Linking Issues
-
-For each story:
-\`\`\`bash
-# Create the story
-gh issue create --title "US-001: [title]" --body "[body]" --label "$RALPH_STORY_LABEL"
-
-# Get IDs and link
-PARENT_ID=\$(gh issue view $PARENT_NUMBER --json id --jq '.id')
-CHILD_ID=\$(gh issue view [CHILD_NUMBER] --json id --jq '.id')
-gh api graphql -f query='mutation(\$parent: ID!, \$child: ID!) { addSubIssue(input: {issueId: \$parent, subIssueId: \$child}) { subIssue { id } } }' -f parent="\$PARENT_ID" -f child="\$CHILD_ID"
-\`\`\`
-
-Create all stories now, then I will start implementing them.
-GENERATE_END
-
-    echo "$GENERATE_PROMPT" | $AGENT_CMD 2>&1 | tee /dev/stderr || true
-
-    # Refresh sub-issues
-    SUB_ISSUES=$(gh_get_sub_issues "$PARENT_ID")
-    TOTAL=$(echo "$SUB_ISSUES" | jq 'length')
-    DONE=$(echo "$SUB_ISSUES" | jq '[.[] | select(.state == "CLOSED")] | length')
-
-    if [ "$TOTAL" -eq 0 ]; then
-      print_error "No stories were created. Please check the agent output."
-      exit 1
-    fi
-
-    print_status "Created $TOTAL stories"
-  else
-    print_error "Cannot run without sub-issues. Create them with ralph --new or manually."
-    exit 1
-  fi
-fi
-
-print_status "Progress: $DONE/$TOTAL stories complete"
+# Count stories
+TOTAL=$(echo "$ISSUE_BODY" | grep -c '^\- \[.\]' || echo "0")
+DONE=$(echo "$ISSUE_BODY" | grep -c '^\- \[x\]' || echo "0")
+print_status "Progress: $DONE/$TOTAL stories"
 echo ""
 
+# Main loop
 for i in $(seq 1 "$MAX_ITERATIONS"); do
-  ITERATION_START=$(date +%s)
   print_header "Iteration $i of $MAX_ITERATIONS"
 
-  # Refresh sub-issues list
-  SUB_ISSUES=$(gh_get_sub_issues "$PARENT_ID")
-  DONE=$(echo "$SUB_ISSUES" | jq '[.[] | select(.state == "CLOSED")] | length')
-  TOTAL=$(echo "$SUB_ISSUES" | jq 'length')
+  # Refresh issue body
+  ISSUE_BODY=$(gh issue view "$ISSUE_NUMBER" --json body --jq '.body')
 
-  # Check if all done
-  if [ "$DONE" -eq "$TOTAL" ] && [ "$TOTAL" -gt 0 ]; then
+  # Get completed stories for context
+  COMPLETED=$(echo "$ISSUE_BODY" | grep '^\- \[x\]' | sed 's/^- \[x\] /- /' || echo "None yet")
+
+  # Get next story
+  NEXT=$(get_next_story "$ISSUE_BODY")
+
+  if [ -z "$NEXT" ]; then
     print_status "All stories complete!"
 
-    RUN_END_TIME=$(date +%s)
-    STORIES_COMPLETED_THIS_RUN=$((DONE - INITIAL_DONE))
+    # Update labels: remove running, add completed
+    gh issue edit "$ISSUE_NUMBER" --remove-label "$RALPH_RUNNING_LABEL" --add-label "$RALPH_COMPLETED_LABEL" 2>/dev/null || true
+    RUNNING_ISSUE=""  # Prevent cleanup from running again
 
-    # Print analytics
-    print_analytics "$RUN_END_TIME" "$((i - 1))" "$STORIES_COMPLETED_THIS_RUN"
+    gh issue comment "$ISSUE_NUMBER" --body "## ✅ Ralph Complete
 
-    # Add completion comment to parent issue with analytics
-    local duration=$(format_duration $((RUN_END_TIME - RUN_START_TIME)))
-    gh_add_comment "$PARENT_NUMBER" "## ✅ Ralph Completed
+All stories have been implemented and verified.
 
-All $TOTAL stories have been implemented and verified.
+**Completed at:** $(date)"
 
-**Completed at:** $(date)
-**Duration:** $duration
-**Iterations:** $((i - 1))
-**Stories this run:** $STORIES_COMPLETED_THIS_RUN
-**Total tokens:** $TOTAL_TOKENS"
-
-    # Remove lock and close parent if desired
-    print_status "Finished at iteration $((i - 1)) of $MAX_ITERATIONS"
-    print_status "You may want to close the parent issue #$PARENT_NUMBER"
+    print_status "You may want to close issue #$ISSUE_NUMBER"
     exit 0
   fi
 
-  # Find next open story (prefer non-checkpoints first, unless all non-checkpoints are done)
-  NEXT_STORY=$(echo "$SUB_ISSUES" | jq -r '
-    [.[] | select(.state == "OPEN")] |
-    (map(select(.labels.nodes | map(.name) | contains(["ralph-checkpoint"]) | not)) | first) //
-    (first)
-  ')
+  STORY_INDEX=$(echo "$NEXT" | cut -d'|' -f1)
+  STORY_TITLE=$(echo "$NEXT" | cut -d'|' -f2-)
 
-  if [ "$NEXT_STORY" = "null" ] || [ -z "$NEXT_STORY" ]; then
-    print_warning "No open stories found but not all complete. Check issue state."
-    sleep 5
-    continue
+  print_status "Working on: $STORY_TITLE"
+
+  # Generate appropriate prompt
+  if is_checkpoint "$STORY_TITLE"; then
+    print_status "Type: Checkpoint"
+    PROMPT=$(generate_checkpoint_prompt "$ISSUE_NUMBER" "$ISSUE_TITLE" "$STORY_TITLE" "$BRANCH_NAME" "$COMPLETED" "$REPO")
+  else
+    PROMPT=$(generate_story_prompt "$ISSUE_NUMBER" "$ISSUE_TITLE" "$STORY_TITLE" "$BRANCH_NAME" "$COMPLETED" "$REPO")
   fi
 
-  STORY_NUMBER=$(echo "$NEXT_STORY" | jq -r '.number')
-  STORY_TITLE=$(echo "$NEXT_STORY" | jq -r '.title')
-  STORY_LABELS=$(echo "$NEXT_STORY" | jq -r '.labels.nodes[].name' 2>/dev/null | tr '\n' ',' || echo "")
-
-  IS_CHECKPOINT="false"
-  if [[ $STORY_LABELS =~ $RALPH_CHECKPOINT_LABEL ]]; then
-    IS_CHECKPOINT="true"
-  fi
-
-  print_status "Working on: #$STORY_NUMBER - $STORY_TITLE"
-  if [ "$IS_CHECKPOINT" = "true" ]; then
-    print_status "Type: E2E Checkpoint"
-  fi
-
-  # Get story details
-  STORY_DETAILS=$(gh_get_issue "$STORY_NUMBER")
-  STORY_BODY=$(echo "$STORY_DETAILS" | jq -r '.body')
-
-  # Get comments from this story (previous attempts, notes, etc.)
-  STORY_COMMENTS=$(gh_get_comments "$STORY_NUMBER" 5 | jq -r '.[] | "### \(.author.login) (\(.createdAt))\n\(.body)\n"' 2>/dev/null || echo "")
-
-  # Get recent comments from parent for broader context
-  PARENT_COMMENTS=$(gh_get_comments "$PARENT_NUMBER" 3 | jq -r '.[] | "### \(.author.login) (\(.createdAt))\n\(.body)\n"' 2>/dev/null || echo "")
-
-  # Combine comments
-  RECENT_COMMENTS=""
-  if [ -n "$STORY_COMMENTS" ]; then
-    RECENT_COMMENTS="### Comments on this story:\n$STORY_COMMENTS\n"
-  fi
-  if [ -n "$PARENT_COMMENTS" ]; then
-    RECENT_COMMENTS="${RECENT_COMMENTS}### Comments on parent spec:\n$PARENT_COMMENTS"
-  fi
-  if [ -z "$RECENT_COMMENTS" ]; then
-    RECENT_COMMENTS="No recent comments"
-  fi
-
-  # Get git diff stat for the branch
-  GIT_DIFF_STAT=$(git diff main..."$BRANCH_NAME" --stat 2>/dev/null || echo "Branch not yet created or no changes")
-
-  # Get completed stories summary
-  COMPLETED_STORIES=$(echo "$SUB_ISSUES" | jq -r '.[] | select(.state == "CLOSED") | "- #\(.number): \(.title)"' || echo "None yet")
-
-  # Generate the prompt
-  PROMPT=$(generate_prompt "$STORY_NUMBER" "$STORY_TITLE" "$STORY_BODY" "$IS_CHECKPOINT" "$RECENT_COMMENTS" "$GIT_DIFF_STAT" "$COMPLETED_STORIES")
-
-  # Run the agent and capture output for token extraction
+  # Run agent
   print_status "Launching agent..."
-  AGENT_OUTPUT=$(echo "$PROMPT" | $AGENT_CMD 2>&1) || true
-  echo "$AGENT_OUTPUT"
+  echo "$PROMPT" | $AGENT_CMD || true
 
-  # Extract tokens from this iteration
-  ITER_TOKENS=$(extract_tokens "$AGENT_OUTPUT")
-  ITER_IN=$(echo "$ITER_TOKENS" | cut -d' ' -f1)
-  ITER_OUT=$(echo "$ITER_TOKENS" | cut -d' ' -f2)
-  ITER_TOTAL=$(echo "$ITER_TOKENS" | cut -d' ' -f3)
+  # Ask if story was completed
+  echo ""
+  print_status "Was this story completed successfully? (y/n)"
+  read -r completed
 
-  TOTAL_TOKENS_IN=$((TOTAL_TOKENS_IN + ITER_IN))
-  TOTAL_TOKENS_OUT=$((TOTAL_TOKENS_OUT + ITER_OUT))
-  TOTAL_TOKENS=$((TOTAL_TOKENS + ITER_TOTAL))
+  if [[ $completed =~ ^[Yy] ]]; then
+    print_status "Marking story complete..."
+    mark_story_complete "$ISSUE_NUMBER" "$STORY_INDEX"
 
-  # Track iteration time
-  ITERATION_END=$(date +%s)
-  ITERATION_DURATION=$((ITERATION_END - ITERATION_START))
-  ITERATION_TIMES+=("$ITERATION_DURATION")
-
-  # Check progress after iteration
-  PREV_DONE=$DONE
-  SUB_ISSUES=$(gh_get_sub_issues "$PARENT_ID")
-  DONE=$(echo "$SUB_ISSUES" | jq '[.[] | select(.state == "CLOSED")] | length')
-
-  # Track stories completed
-  if [ "$DONE" -gt "$PREV_DONE" ]; then
-    STORIES_COMPLETED_THIS_RUN=$((STORIES_COMPLETED_THIS_RUN + DONE - PREV_DONE))
+    # Update counts
+    DONE=$((DONE + 1))
+    print_status "Progress: $DONE/$TOTAL stories"
+  else
+    print_warning "Story not completed. Will retry on next iteration."
   fi
 
-  print_status "Progress: $DONE/$TOTAL stories complete"
-  print_status "Iteration $i complete ($(format_duration $ITERATION_DURATION)). Continuing in 2 seconds..."
+  print_status "Continuing in 2 seconds..."
   sleep 2
 done
 
-RUN_END_TIME=$(date +%s)
-
-echo ""
-print_warning "Ralph reached max iterations ($MAX_ITERATIONS) without completing."
-print_warning "Progress: $DONE/$TOTAL stories complete"
-
-# Print analytics even on incomplete run
-print_analytics "$RUN_END_TIME" "$MAX_ITERATIONS" "$STORIES_COMPLETED_THIS_RUN"
-
-print_warning "Continue with: ralph $PARENT_NUMBER $((MAX_ITERATIONS * 2))"
+print_warning "Reached max iterations ($MAX_ITERATIONS)"
+print_warning "Progress: $DONE/$TOTAL stories"
+print_warning "Continue with: ralph $ISSUE_NUMBER"
 exit 1
