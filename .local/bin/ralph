@@ -56,7 +56,8 @@ print_error() {
   echo -e "${RED}[ralph]${NC} $1"
 }
 
-# Cleanup function - removes ralph-running label
+# Cleanup function - removes ralph-running label (called via trap)
+# shellcheck disable=SC2329
 cleanup() {
   if [ -n "$RUNNING_ISSUE" ]; then
     print_status "Cleaning up..."
@@ -134,9 +135,9 @@ show_status() {
     labels=$(echo "$spec" | jq -r '.labels[].name' | tr '\n' ' ')
 
     # Count checkboxes
-    local total done
+    local total task_done
     total=$(echo "$body" | grep -c '^\- \[.\]' || echo "0")
-    done=$(echo "$body" | grep -c '^\- \[x\]' || echo "0")
+    task_done=$(echo "$body" | grep -c '^\- \[x\]' || echo "0")
 
     # Format state based on labels and issue state
     local state_display
@@ -146,14 +147,14 @@ show_status() {
       state_display="${GREEN}COMPLETED${NC}"
     elif [ "$state" = "CLOSED" ]; then
       state_display="${GREEN}CLOSED${NC}"
-    elif [ "$done" -eq "$total" ] && [ "$total" -gt 0 ]; then
+    elif [ "$task_done" -eq "$total" ] && [ "$total" -gt 0 ]; then
       state_display="${GREEN}READY TO CLOSE${NC}"
     else
       state_display="${CYAN}PENDING${NC}"
     fi
 
     echo -e "${BOLD}#$number: $title${NC} [$state_display]"
-    echo -e "  Progress: ${GREEN}$done${NC}/${total} stories complete"
+    echo -e "  Progress: ${GREEN}$task_done${NC}/${total} stories complete"
 
     # Show next story
     local next_story
@@ -298,7 +299,7 @@ get_next_story() {
   while IFS= read -r line; do
     if echo "$line" | grep -q '^\- \[ \]'; then
       local title
-      title=$(echo "$line" | sed 's/^- \[ \] //')
+      title="${line#- \[ \] }"
       echo "$index|$title"
       return 0
     fi
@@ -329,7 +330,7 @@ mark_story_complete() {
   local new_body=""
   while IFS= read -r line; do
     if echo "$line" | grep -q '^\- \[ \]' && [ "$count" -eq "$story_index" ]; then
-      line=$(echo "$line" | sed 's/^\- \[ \]/- [x]/')
+      line="${line/- \[ \]/- [x]}"
     fi
     if echo "$line" | grep -q '^\- \[.\]'; then
       count=$((count + 1))
@@ -547,6 +548,7 @@ if [ "$ISSUE_STATE" = "CLOSED" ]; then
 fi
 
 # Extract branch name from issue body
+# shellcheck disable=SC2016
 BRANCH_NAME=$(echo "$ISSUE_BODY" | grep -o '`ralph/[^`]*`' | head -1 | tr -d '`' || echo "")
 if [ -z "$BRANCH_NAME" ]; then
   BRANCH_NAME="ralph/$(echo "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')"
