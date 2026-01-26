@@ -1,3 +1,8 @@
+# Ignore installed binaries, keep only custom scripts
+.local/bin/*
+!.local/bin/ralph
+!.local/bin/reflect
+
 # Folder view configuration files
 .DS_Store
 Desktop.ini

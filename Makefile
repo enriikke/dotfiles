@@ -12,7 +12,7 @@ help:
 
 lint:
 	@command -v shellcheck >/dev/null 2>&1 || { echo "shellcheck not found. Run: brew install shellcheck"; exit 1; }
-	@shellcheck -S style -x $$(find $(SHELL_DIRS) -type f -perm -u+x -print 2>/dev/null) $$(find $(SHELL_DIRS) -type f -name "*.sh" -print 2>/dev/null)
+	@shellcheck -S style -x $$(find $(SHELL_DIRS) -type f \( -name "*.sh" -o -perm -u+x \) -exec sh -c 'head -1 "$$1" | grep -q "^#!"' _ {} \; -print 2>/dev/null)
 
 fmt:
 	@command -v shfmt >/dev/null 2>&1 || { echo "shfmt not found. Run: brew install shfmt"; exit 1; }
