@@ -264,28 +264,28 @@ DAYS=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
-  --since)
-    SINCE_DATE="$2"
-    shift 2
-    ;;
-  --days)
-    DAYS="$2"
-    shift 2
-    ;;
-  --dry-run)
-    DRY_RUN=true
-    shift
-    ;;
-  --setup)
-    setup_repo
-    ;;
-  -h | --help)
-    usage
-    ;;
-  *)
-    print_error "Unknown option: $1"
-    usage
-    ;;
+    --since)
+      SINCE_DATE="$2"
+      shift 2
+      ;;
+    --days)
+      DAYS="$2"
+      shift 2
+      ;;
+    --dry-run)
+      DRY_RUN=true
+      shift
+      ;;
+    --setup)
+      setup_repo
+      ;;
+    -h | --help)
+      usage
+      ;;
+    *)
+      print_error "Unknown option: $1"
+      usage
+      ;;
   esac
 done
 
