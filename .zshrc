@@ -59,6 +59,9 @@ export PATH=$PATH:$(go env GOPATH)/bin
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 
+# maestro
+export PATH=$PATH:$HOME/.maestro/bin
+
 # Other env vars
 export SHELL=$(which zsh)
 export VISUAL="nvim"
