@@ -24,8 +24,13 @@ macos-titlebar-proxy-icon = hidden
 # keybindings
 keybind = ctrl+-=new_split:down
 keybind = ctrl+|=new_split:right
-keybind = ctrl+h=goto_split:left
-keybind = ctrl+j=goto_split:bottom
-keybind = ctrl+k=goto_split:top
-keybind = ctrl+l=goto_split:right
 keybind = shift+enter=text:\x1b\r
+
+# Ghostty split navigation: Use the defaults (Cmd+Option+Arrows on macOS).
+# We intentionally avoid Ctrl+h/j/k/l here because vim-tmux-navigator uses
+# those keys to navigate between neovim splits and tmux panes seamlessly.
+# See: https://github.com/christoomey/vim-tmux-navigator
+# keybind = ctrl+h=goto_split:left
+# keybind = ctrl+j=goto_split:bottom
+# keybind = ctrl+k=goto_split:top
+# keybind = ctrl+l=goto_split:right
