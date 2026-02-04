@@ -84,35 +84,49 @@ else
 fi
 
 # =============================================================================
-# ANTIDOTE PLUGIN MANAGER
+# ANTIDOTE PLUGIN MANAGER (cached bundle for fast startup)
 # =============================================================================
 
-# Set antidote paths
 ANTIDOTE_HOME="$HOME/.config/zsh/antidote"
 PLUGINS_FILE="$HOME/.config/zsh/plugins.txt"
+PLUGINS_CACHE="$HOME/.config/zsh/plugins.zsh"
 
 # Install antidote if it doesn't exist
 if [[ ! -d $ANTIDOTE_HOME ]]; then
   echo "Installing antidote..."
-  git clone --depth=1 https://github.com/mattmc3/antidote.git $ANTIDOTE_HOME
+  git clone --depth=1 https://github.com/mattmc3/antidote.git "$ANTIDOTE_HOME"
 fi
 
 # Create plugins file if it doesn't exist
 if [[ ! -f $PLUGINS_FILE ]]; then
   echo "Creating plugins file..."
-  touch $PLUGINS_FILE
+  touch "$PLUGINS_FILE"
 fi
 
 # Initialize antidote
-source $ANTIDOTE_HOME/antidote.zsh
-antidote load $PLUGINS_FILE
+source "$ANTIDOTE_HOME/antidote.zsh"
+
+# Regenerate bundle only when plugins.txt changes
+if [[ ! -f $PLUGINS_CACHE || $PLUGINS_CACHE -ot $PLUGINS_FILE ]]; then
+  antidote bundle <"$PLUGINS_FILE" >"$PLUGINS_CACHE"
+  zcompile "$PLUGINS_CACHE" 2>/dev/null || true
+fi
+
+# Source compiled bundle if available, otherwise plain cache
+if [[ -f "$PLUGINS_CACHE.zwc" ]]; then
+  source "$PLUGINS_CACHE.zwc"
+else
+  source "$PLUGINS_CACHE"
+fi
 
 # =============================================================================
 # COMPLETION SYSTEM
 # =============================================================================
 
-# Add Homebrew's completion directory to fpath
-FPATH="/opt/homebrew/share/zsh/site-functions:$FPATH"
+# Add Homebrew's completion directory to fpath (uses HOMEBREW_PREFIX from brew shellenv)
+if [[ -n "$HOMEBREW_PREFIX" ]]; then
+  FPATH="$HOMEBREW_PREFIX/share/zsh/site-functions:$FPATH"
+fi
 
 # Initialize completion system (use cache if available and less than 24 hours old)
 autoload -Uz compinit
@@ -288,6 +302,9 @@ alias pn='pnpm'
 
 # Reload the shell
 alias reload="exec $SHELL -l"
+
+# Benchmark zsh startup time
+alias zsh-time='for i in $(seq 1 5); do /usr/bin/time zsh -i -c exit 2>&1; done'
 
 # =============================================================================
 # FINAL SETUP
