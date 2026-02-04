@@ -111,7 +111,7 @@ func runSSH(cmd *cobra.Command, args []string) error {
 		// Build options for multi-select
 		var options []huh.Option[string]
 		for _, item := range items {
-			label := item.Title
+			var label string
 			if item.Type == "config" {
 				label = fmt.Sprintf("%s → %s", item.Title, item.Name)
 			} else {
