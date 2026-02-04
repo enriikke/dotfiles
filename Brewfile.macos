@@ -1,9 +1,6 @@
 # Brewfile.macos - macOS-only packages (fonts, apps)
 
-# Taps
-tap "homebrew/cask-fonts"
-
-# Fonts
+# Fonts (no tap needed - now in main cask)
 cask "font-jetbrains-mono-nerd-font"
 cask "font-fira-mono-nerd-font"
 cask "font-fira-code-nerd-font"
