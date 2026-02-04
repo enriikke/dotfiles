@@ -50,6 +50,10 @@ func PrintHeader(text string) {
 	fmt.Println(HeaderStyle.Render("═══ " + text + " ═══"))
 }
 
+func PrintSection(text string) {
+	fmt.Println(HeaderStyle.Render("═══ " + text + " ═══"))
+}
+
 func PrintSuccess(text string) {
 	fmt.Printf("%s %s\n", CheckIcon, text)
 }

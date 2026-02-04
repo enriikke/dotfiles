@@ -60,3 +60,4 @@ dist/
 
 # Ruby
 .ruby-lsp/
+.config/op/
