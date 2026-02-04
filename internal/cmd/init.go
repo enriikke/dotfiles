@@ -59,7 +59,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	ui.PrintHeader("Installing Packages")
-	if err := installPackages(plat, repoPath, cfg); err != nil {
+	if err := installPackages(plat, repoPath); err != nil {
 		ui.PrintError(fmt.Sprintf("Package installation failed: %v", err))
 	}
 
@@ -127,7 +127,7 @@ func expandPath(path string) string {
 	return path
 }
 
-func installPackages(plat platform.Info, repoPath string, cfg *config.Config) error {
+func installPackages(plat platform.Info, repoPath string) error {
 	ui.PrintInfo("Using Homebrew for package management")
 
 	installer := packages.NewBrewInstaller(dryRunFlag)
@@ -143,7 +143,7 @@ func installPackages(plat platform.Info, repoPath string, cfg *config.Config) er
 	}
 
 	// Install core packages (all platforms)
-	brewfile := filepath.Join(repoPath, cfg.Packages.Brewfile)
+	brewfile := filepath.Join(repoPath, "Brewfile")
 	if _, err := os.Stat(brewfile); err == nil {
 		ui.PrintStep("Installing packages from Brewfile...")
 		if err := installer.InstallPackages(brewfile); err != nil {
@@ -155,8 +155,8 @@ func installPackages(plat platform.Info, repoPath string, cfg *config.Config) er
 	}
 
 	// Install macOS-specific packages (fonts, apps)
-	if plat.IsMacOS() && cfg.Packages.BrewfileMacOS != "" {
-		brewfileMacOS := filepath.Join(repoPath, cfg.Packages.BrewfileMacOS)
+	if plat.IsMacOS() {
+		brewfileMacOS := filepath.Join(repoPath, "Brewfile.macos")
 		if _, err := os.Stat(brewfileMacOS); err == nil {
 			ui.PrintStep("Installing macOS packages (fonts, apps)...")
 			if err := installer.InstallPackages(brewfileMacOS); err != nil {

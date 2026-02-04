@@ -10,11 +10,6 @@ symlinks:
   - .config/nvim
   - .config/zsh
 
-# Package files (Homebrew on all platforms)
-packages:
-  brewfile: Brewfile
-  brewfile_macos: Brewfile.macos
-
 # Paths to check when looking for the dotfiles repo
 repo_paths:
   - ~/.dotfiles
