@@ -303,6 +303,9 @@ alias pn='pnpm'
 # Reload the shell
 alias reload="exec $SHELL -l"
 
+# Benchmark zsh startup time
+alias zsh-time='for i in $(seq 1 5); do /usr/bin/time zsh -i -c exit 2>&1; done'
+
 # =============================================================================
 # FINAL SETUP
 # =============================================================================
