@@ -16,6 +16,7 @@ brew "gh"
 brew "neovim"
 brew "tmux"
 brew "lazygit"
+brew "lazydocker"
 brew "mosh"
 
 # Language version managers
