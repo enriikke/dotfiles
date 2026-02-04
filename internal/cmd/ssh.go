@@ -19,7 +19,6 @@ var (
 )
 
 func init() {
-	rootCmd.AddCommand(sshCmd)
 	sshCmd.Flags().BoolVar(&sshDryRun, "dry-run", false, "Preview changes without making them")
 	sshCmd.Flags().BoolVar(&sshAll, "all", false, "Download all keys and configs without prompting")
 }

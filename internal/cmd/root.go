@@ -20,6 +20,8 @@ func Execute() error {
 
 func init() {
 	rootCmd.AddCommand(initCmd)
+	rootCmd.AddCommand(sshCmd)
+	rootCmd.AddCommand(aiCmd)
 	rootCmd.AddCommand(versionCmd)
 }
 

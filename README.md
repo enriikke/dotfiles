@@ -24,8 +24,20 @@ cd ~/projects/dotfiles
 ```bash
 dotfiles init           # Set up everything
 dotfiles init --dry-run # Preview changes
+dotfiles ai             # Install AI coding agents (interactive)
+dotfiles ai --all       # Install all AI agents
+dotfiles ai --agent codex --agent claude  # Install specific agents
 dotfiles version        # Print version
 ```
+
+## AI Agents
+
+`dotfiles ai` can install the following CLI AI coding agents:
+
+- **Codex** - OpenAI's CLI coding agent
+- **Claude Code** - Anthropic's CLI coding agent
+- **Copilot** - GitHub's CLI coding agent
+- **Gemini** - Google's CLI coding agent
 
 ## Structure
 

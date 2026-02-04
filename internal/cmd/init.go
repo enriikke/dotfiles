@@ -230,6 +230,7 @@ func printSummary() {
 	ui.PrintInfo("Next steps:")
 	ui.PrintList([]string{
 		"Restart your terminal or run: exec zsh",
-		"Run 'dotfiles ssh' to set up SSH keys (coming soon)",
+		"Run 'dotfiles ssh' to set up SSH keys from 1Password",
+		"Run 'dotfiles ai' to install AI coding agents",
 	})
 }
