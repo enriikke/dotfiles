@@ -5,8 +5,8 @@ My personal dotfiles, managed by a custom Go CLI.
 ## Quick Start
 
 ```bash
-git clone https://github.com/enriikke/dotfiles.git ~/dotfiles
-cd ~/dotfiles
+git clone https://github.com/enriikke/dotfiles.git ~/.dotfiles
+cd ~/projects/dotfiles
 ./script/setup
 ```
 
