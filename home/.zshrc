@@ -123,8 +123,10 @@ fi
 # COMPLETION SYSTEM
 # =============================================================================
 
-# Add Homebrew's completion directory to fpath
-FPATH="/opt/homebrew/share/zsh/site-functions:$FPATH"
+# Add Homebrew's completion directory to fpath (uses HOMEBREW_PREFIX from brew shellenv)
+if [[ -n "$HOMEBREW_PREFIX" ]]; then
+  FPATH="$HOMEBREW_PREFIX/share/zsh/site-functions:$FPATH"
+fi
 
 # Initialize completion system (use cache if available and less than 24 hours old)
 autoload -Uz compinit
