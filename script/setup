@@ -1,388 +1,136 @@
 #!/usr/bin/env bash
+#
+# Bootstrap script for dotfiles
+#
+# Usage:
+#   curl -fsSL https://raw.githubusercontent.com/enriikke/dotfiles/main/script/setup | bash
 
 set -e
 
-# Source shared helpers
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=script/common.sh
-. "$script_dir/common.sh"
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
 
-# Define tools list with package:command mapping
-# Format: "package_name" or "package_name:command_name"
-TOOLS=(
-  # Shell and core utilities
-  "zsh"
-  "starship"
-  "fzf"
-  "eza"        # Modern ls replacement
-  "bat"        # Modern cat replacement
-  "ripgrep:rg" # Modern grep replacement
-  "fd"         # Modern find replacement
-  "zoxide"     # Smart cd replacement
-  "ast-grep"
-  "git"
-  "gh"   # GitHub CLI
-  "mosh" # Better SSH
-  "stow" # Symlink farm manager for dotfiles
-  "make" # Build tool
+info() { printf "${GREEN}[INFO]${NC} %s\n" "$1"; }
+warn() { printf "${YELLOW}[WARN]${NC} %s\n" "$1"; }
+error() { printf "${RED}[ERROR]${NC} %s\n" "$1"; }
 
-  # Development tools
-  "neovim:nvim" # Modern vim
-  "tmux"
-  "fnm" # Fast Node.js version manager
-  "go"
-  "lazygit"
-  "rbenv"
-
-  # Shell scripting tools
-  "shellcheck" # Shell script linter
-  "shfmt"      # Shell script formatter
-
-  # Additional useful tools
-  "jq"   # JSON processor
-  "yq"   # YAML processor
-  "tree" # Directory tree viewer
-  "htop" # Better top
-  "curl"
-  "wget"
-  "gnupg:gpg"   # GPG signing
-  "httpie:http" # Better curl replacement
-)
-
-# Helper function to extract package name from tool entry
-get_package_name() {
-  local tool="$1"
-  echo "${tool%:*}" # Everything before the colon, or the whole string if no colon
+detect_platform() {
+  local os arch
+  case "$(uname -s)" in
+    Darwin) os="darwin" ;;
+    Linux)  os="linux" ;;
+    *)      error "Unsupported OS: $(uname -s)"; exit 1 ;;
+  esac
+  case "$(uname -m)" in
+    x86_64|amd64)  arch="amd64" ;;
+    arm64|aarch64) arch="arm64" ;;
+    *)             error "Unsupported architecture: $(uname -m)"; exit 1 ;;
+  esac
+  echo "${os}_${arch}"
 }
 
-# Helper function to extract command name from tool entry
-get_command_name() {
-  local tool="$1"
-  if [[ $tool == *":"* ]]; then
-    echo "${tool#*:}" # Everything after the colon
-  else
-    echo "$tool" # Same as package name if no colon
+get_latest_version() {
+  curl -fsSL "https://api.github.com/repos/enriikke/dotfiles/releases/latest" | 
+    grep '"tag_name"' | 
+    sed -E 's/.*"([^"]+)".*/\1/'
+}
+
+install_binary() {
+  local version="$1"
+  local platform="$2"
+  local install_dir="$HOME/.local/bin"
+  local tmp_dir
+  tmp_dir=$(mktemp -d)
+  trap 'rm -rf "$tmp_dir"' EXIT
+
+  local url="https://github.com/enriikke/dotfiles/releases/download/${version}/dotfiles_${version#v}_${platform}.tar.gz"
+  
+  info "Downloading dotfiles ${version} for ${platform}..."
+  curl -fsSL "$url" -o "$tmp_dir/dotfiles.tar.gz"
+
+  info "Extracting..."
+  tar -xzf "$tmp_dir/dotfiles.tar.gz" -C "$tmp_dir"
+
+  info "Installing to $install_dir..."
+  mkdir -p "$install_dir"
+  mv "$tmp_dir/dotfiles" "$install_dir/dotfiles"
+  chmod +x "$install_dir/dotfiles"
+
+  if [[ ":$PATH:" != *":$install_dir:"* ]]; then
+    warn "$install_dir is not in your PATH"
+    export PATH="$install_dir:$PATH"
   fi
+
+  info "✓ dotfiles installed!"
 }
 
-# Detect OS
-if ! OS="$(detect_os)"; then
-  print_error "Unsupported operating system: $OSTYPE"
-  exit 1
-fi
-
-print_status "Detected OS: $OS"
-
-# Install Homebrew (works on both macOS and Linux now!)
-install_homebrew() {
-  print_header "Installing Homebrew"
-
-  if command -v brew >/dev/null 2>&1; then
-    print_status "Homebrew already installed"
+find_repo() {
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  
+  if [[ -f "$script_dir/../dotfiles.yaml" ]]; then
+    echo "$(cd "$script_dir/.." && pwd)"
     return 0
   fi
 
-  print_status "Installing Homebrew..."
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-  # Initialize Homebrew environment for current session
-  if is_macos; then
-    if [[ -x "/opt/homebrew/bin/brew" ]]; then
-      # macOS Apple Silicon
-      eval "$(/opt/homebrew/bin/brew shellenv)"
-    elif [[ -x "/usr/local/bin/brew" ]]; then
-      # macOS Intel
-      eval "$(/usr/local/bin/brew shellenv)"
-    fi
-  else
-    # Linux
-    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-  fi
-
-  print_status "✓ Homebrew installed and configured"
-}
-
-# Install all development tools via Homebrew
-install_dev_tools() {
-  print_header "Installing Development Tools"
-
-  # Extract package names from the tools list
-  local packages=()
-  for tool in "${TOOLS[@]}"; do
-    packages+=("$(get_package_name "$tool")")
-  done
-
-  print_status "Installing core development tools..."
-  brew install --quiet "${packages[@]}"
-
-  # Install fonts (macOS only, Linux users need manual font setup)
-  if is_macos; then
-    print_status "Installing Nerd Fonts..."
-
-    local fonts=("font-jetbrains-mono-nerd-font" "font-fira-mono-nerd-font" "font-fira-code-nerd-font")
-    for font in "${fonts[@]}"; do
-      print_status "Installing $font..."
-      if brew install --cask "$font" 2>/dev/null; then
-        print_status "✓ $font installed"
-      else
-        print_status "✓ $font already installed (or installation failed)"
-      fi
-    done
-  else
-    print_warning "Font installation skipped on Linux. Install Nerd Fonts manually if needed."
-  fi
-
-  print_status "✓ Development tools installed"
-}
-
-# Set zsh as default shell
-set_default_shell() {
-  print_header "Setting Zsh as Default Shell"
-
-  if [[ $SHELL == *"zsh"* ]]; then
-    print_status "Zsh is already the default shell"
-    return 0
-  fi
-
-  local zsh_path
-  zsh_path=$(command -v zsh)
-
-  # Add to /etc/shells if not already there
-  if ! grep -q "$zsh_path" /etc/shells 2>/dev/null; then
-    print_status "Adding $zsh_path to /etc/shells..."
-    echo "$zsh_path" | sudo tee -a /etc/shells >/dev/null
-    print_status "Added $zsh_path to /etc/shells"
-  fi
-
-  # Change default shell - use sudo in non-interactive environments
-  print_status "Changing default shell to zsh..."
-  if is_non_interactive; then
-    # In Codespaces and CI environments, chsh often requires sudo
-    if sudo chsh -s "$zsh_path" "$USER" 2>/dev/null; then
-      print_status "✓ Default shell set to zsh (using sudo)"
-    else
-      print_warning "Could not change default shell automatically"
-      print_status "You may need to run: chsh -s $zsh_path"
+  for path in "$HOME/.dotfiles" "$HOME/dotfiles"; do
+    if [[ -f "$path/dotfiles.yaml" ]]; then
+      echo "$path"
       return 0
     fi
-  else
-    if chsh -s "$zsh_path"; then
-      print_status "✓ Default shell set to zsh"
-    else
-      print_warning "Failed to change shell. You may need to run: chsh -s $zsh_path"
-      return 0
-    fi
-  fi
-}
-
-# Install 1Password CLI separately
-install_1password_cli() {
-  print_header "Installing 1Password CLI"
-
-  # Skip 1Password installation in github/github Codespaces only
-  if is_gh_codespace; then
-    print_status "Skipping 1Password CLI installation in github/github Codespaces"
-    return 0
-  fi
-
-  local onepassword_script="$script_dir/install-1password-cli"
-
-  if [[ -f $onepassword_script ]]; then
-    print_status "Running 1Password CLI installation script..."
-    "$onepassword_script"
-  else
-    print_warning "1Password CLI installation script not found at $onepassword_script"
-    print_status "You can install it manually or run the script separately"
-  fi
-}
-
-# Backup existing dotfiles that would conflict with stow
-backup_conflicting_files() {
-  local backup_dir
-  backup_dir="$HOME/.dotfiles_backup_$(date +%Y%m%d_%H%M%S)"
-  local conflicts_found=false
-
-  print_status "Checking for conflicting files..."
-
-  # Get list of files that would be stowed (excluding ignored files)
-  # We need to find all files in current directory that aren't ignored by stow
-  local files_to_check=(
-    ".zshrc"
-    ".gitconfig"
-    ".gitignore"
-    ".ssh"
-    ".config"
-  )
-
-  for item in "${files_to_check[@]}"; do
-    local target_path="$HOME/$item"
-    local source_path
-    source_path="$(pwd)/$item"
-
-    # Skip if source doesn't exist
-    [[ ! -e $source_path ]] && continue
-
-    # Check if target exists and is not already a symlink to our dotfiles
-    if [[ -e $target_path || -L $target_path ]]; then
-      # If it's a symlink pointing to our dotfiles, skip it
-      if [[ -L $target_path ]]; then
-        local link_target
-        link_target=$(readlink "$target_path")
-        if [[ $link_target == "$source_path" || $link_target == "$(realpath "$source_path")" ]]; then
-          print_status "✓ $item already symlinked correctly"
-          continue
-        fi
-      fi
-
-      # File/dir exists and conflicts
-      if ! $conflicts_found; then
-        conflicts_found=true
-        mkdir -p "$backup_dir"
-        print_status "Created backup directory: $backup_dir"
-      fi
-
-      print_status "Backing up existing $item..."
-      if [[ -d $target_path && ! -L $target_path ]]; then
-        # It's a real directory, move it
-        mv "$target_path" "$backup_dir/"
-        print_status "✓ Moved directory $item to backup"
-      else
-        # It's a file or symlink, move it
-        mv "$target_path" "$backup_dir/"
-        print_status "✓ Moved $item to backup"
-      fi
-    fi
   done
 
-  if $conflicts_found; then
-    print_status "✓ Conflicting files backed up to: $backup_dir"
-  else
-    print_status "✓ No conflicting files found"
-  fi
+  return 1
 }
 
-# Stow dotfiles
-stow_dotfiles() {
-  print_header "Setting up Dotfiles"
-
-  # Skip stowing in Codespaces
-  if is_codespace; then
-    print_status "Running in Codespaces - skipping automatic stowing"
-    print_status "To stow specific packages later, use: ./script/stow-packages"
-    return 0
-  fi
-
-  # Check if we're in a dotfiles directory
-  if [[ ! -f ".stowrc" || ! -f ".zshrc" ]]; then
-    print_warning "Not in a dotfiles directory with .stowrc and .zshrc"
-    print_status "Skipping automatic dotfile stowing"
-    print_status "To stow dotfiles later:"
-    print_status "1. cd to your dotfiles directory"
-    print_status "2. Run: stow ."
-    return 0
-  fi
-
-  print_status "Dotfiles directory detected, proceeding with stow..."
-
-  # Check if any files would conflict
-  if stow --simulate --no --verbose=2 --target="$HOME" . 2>&1 | grep -qi "conflict"; then
-    print_warning "Some dotfiles already exist and would conflict"
-
-    # In non-interactive mode, always backup and proceed
-    if is_non_interactive; then
-      print_status "Non-interactive mode: automatically backing up existing files"
-      backup_conflicting_files
-    else
-      # In interactive mode, ask user
-      echo ""
-      if confirm "Do you want to backup existing files and continue?" y; then
-        backup_conflicting_files
-      else
-        print_status "Skipping dotfile stowing - you can run 'stow .' manually later"
-        return 0
-      fi
-    fi
-  fi
-
-  # Run stow targeting home explicitly
-  print_status "Running stow to create symlinks..."
-  if stow --target="$HOME" .; then
-    print_status "✓ Dotfiles successfully stowed!"
-    print_status "Symlinks created in home directory pointing to dotfiles repo"
-  else
-    print_error "Failed to stow dotfiles"
-    print_status "You can try running 'stow .' manually from the dotfiles directory"
-    return 1
-  fi
-}
-
-# Verify installation
-verify_installation() {
-  print_header "Verifying Installation"
-
-  # Extract command names from the tools list
-  local commands=()
-  for tool in "${TOOLS[@]}"; do
-    commands+=("$(get_command_name "$tool")")
-  done
-
-  local missing=()
-
-  for cmd in "${commands[@]}"; do
-    if command -v "$cmd" >/dev/null 2>&1; then
-      print_status "✓ $cmd"
-    else
-      print_warning "✗ $cmd not found"
-      missing+=("$cmd")
-    fi
-  done
-
-  # check 1Password CLI separately
-  if command -v op >/dev/null 2>&1; then
-    print_status "✓ op (1Password CLI)"
-  else
-    print_warning "✗ op (1Password CLI) not found"
-    missing+=("op")
-  fi
-
-  if [[ ${#missing[@]} -eq 0 ]]; then
-    print_status "🎉 All tools successfully installed!"
-  else
-    print_warning "Some tools are missing: ${missing[*]}"
-    print_status "You may need to restart your terminal or check your PATH"
-  fi
-}
-
-# Main installation function
 main() {
-  print_header "Development Environment Setup"
+  info "🚀 dotfiles bootstrap"
+  echo
 
-  echo "Installing development environment..."
-  echo "  • Homebrew (package manager)"
-  echo "  • Zsh with modern plugins"
-  echo "  • Development tools (neovim, tmux, git, etc.)"
-  echo "  • 1Password CLI (separate installation)"
-  echo "  • Stow dotfiles (if run from dotfiles directory)"
-  echo ""
+  local platform
+  platform=$(detect_platform)
+  info "Detected platform: $platform"
 
-  install_homebrew
-  install_dev_tools
-  install_1password_cli
-  set_default_shell
-  verify_installation
-  stow_dotfiles
+  if command -v dotfiles &>/dev/null; then
+    info "dotfiles CLI already installed"
+  else
+    local repo_path
+    if repo_path=$(find_repo); then
+      if command -v go &>/dev/null; then
+        info "Building from source..."
+        (cd "$repo_path" && go build -o dotfiles ./cmd/dotfiles)
+        export PATH="$repo_path:$PATH"
+      else
+        local version
+        version=$(get_latest_version)
+        if [[ -z "$version" ]]; then
+          error "Could not determine latest version. Install Go and build from source."
+          exit 1
+        fi
+        install_binary "$version" "$platform"
+      fi
+    else
+      local version
+      version=$(get_latest_version)
+      if [[ -z "$version" ]]; then
+        error "Could not determine latest version and no local repo found"
+        exit 1
+      fi
+      install_binary "$version" "$platform"
+    fi
+  fi
 
-  print_header "Installation Complete!"
-  echo ""
-  print_status "🎉 Development environment setup finished!"
-  echo ""
-  print_status "Next steps:"
-  print_status "1. Restart your terminal or run: exec zsh"
-  print_status "2. Plugins will install automatically on first zsh run"
-  print_status "3. Set up SSH keys from 1Password: ./script/setup-ssh-keys"
-  echo ""
-  print_status "🚀 Happy coding!"
+  echo
+  info "Running dotfiles init..."
+  echo
+
+  if repo_path=$(find_repo); then
+    dotfiles init --repo="$repo_path"
+  else
+    dotfiles init
+  fi
 }
 
-# Run main function
 main "$@"

@@ -9,7 +9,7 @@ on:
       - main
 
 jobs:
-  validate:
+  build:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -19,33 +19,25 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Install lint/format deps (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Build
+        run: go build -v ./...
+
+      - name: Test
+        run: go test -v ./...
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v4
+        with:
+          version: latest
+
+      - name: Test dry-run
         run: |
-          sudo apt-get update
-          sudo apt-get install -y shellcheck shfmt make zsh
-
-      - name: Install lint/format deps (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          brew update
-          brew install shellcheck shfmt make
-
-      - name: Lint and format check
-        run: make check
-
-      - name: Prepare temporary HOME
-        run: |
-          TEMP_HOME="$(mktemp -d)"
-          echo "Using HOME=$TEMP_HOME"
-          echo "HOME=$TEMP_HOME" >> "$GITHUB_ENV"
-
-      - name: Run setup script
-        env:
-          SHELL: /bin/zsh
-        run: bash script/setup
-
-      - name: Test Zsh config
-        run: zsh -xc 'source "$HOME/.zshrc"'
+          go build -o dotfiles ./cmd/dotfiles
+          ./dotfiles init --dry-run

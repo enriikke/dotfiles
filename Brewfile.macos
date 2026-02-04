@@ -1,0 +1,10 @@
+# Brewfile.macos - macOS-only packages (fonts, apps)
+
+# Fonts (no tap needed - now in main cask)
+cask "font-jetbrains-mono-nerd-font"
+cask "font-fira-mono-nerd-font"
+cask "font-fira-code-nerd-font"
+
+# Apps
+cask "1password-cli"
+cask "ghostty"
