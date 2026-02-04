@@ -5,6 +5,14 @@
 -- OSC 52 clipboard support (works over SSH, in tmux, everywhere)
 -- Yanking in nvim copies to system clipboard via terminal escape sequences
 vim.opt.clipboard = "unnamedplus"
+
+local function paste()
+  return {
+    vim.fn.split(vim.fn.getreg(""), "\n"),
+    vim.fn.getregtype(""),
+  }
+end
+
 vim.g.clipboard = {
   name = "OSC 52",
   copy = {
@@ -12,7 +20,7 @@ vim.g.clipboard = {
     ["*"] = require("vim.ui.clipboard.osc52").copy("*"),
   },
   paste = {
-    ["+"] = require("vim.ui.clipboard.osc52").paste("+"),
-    ["*"] = require("vim.ui.clipboard.osc52").paste("*"),
+    ["+"] = paste,
+    ["*"] = paste,
   },
 }
