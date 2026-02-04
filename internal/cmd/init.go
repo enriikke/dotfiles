@@ -1,0 +1,246 @@
+package cmd
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"github.com/enriikke/dotfiles/internal/config"
+	"github.com/enriikke/dotfiles/internal/packages"
+	"github.com/enriikke/dotfiles/internal/platform"
+	"github.com/enriikke/dotfiles/internal/symlink"
+	"github.com/enriikke/dotfiles/internal/ui"
+	"github.com/spf13/cobra"
+)
+
+var (
+	repoFlag   string
+	dryRunFlag bool
+)
+
+var initCmd = &cobra.Command{
+	Use:   "init",
+	Short: "Initialize your development environment",
+	Long: `Initialize sets up your development environment by:
+  1. Installing packages (Homebrew on macOS, apt on Linux)
+  2. Symlinking dotfiles to your home directory
+  3. Setting zsh as your default shell`,
+	RunE: runInit,
+}
+
+func init() {
+	initCmd.Flags().StringVar(&repoFlag, "repo", "", "Path to dotfiles repository")
+	initCmd.Flags().BoolVar(&dryRunFlag, "dry-run", false, "Show what would be done without making changes")
+}
+
+func runInit(cmd *cobra.Command, args []string) error {
+	ui.PrintTitle("🚀 dotfiles init")
+
+	ui.PrintHeader("Detecting Platform")
+	plat := platform.Detect()
+	ui.PrintSuccess(fmt.Sprintf("Platform: %s", plat.String()))
+
+	ui.PrintHeader("Finding Dotfiles Repository")
+	repoPath, err := findRepo(nil)
+	if err != nil {
+		ui.PrintError(fmt.Sprintf("Could not find dotfiles repository: %v", err))
+		return err
+	}
+	ui.PrintSuccess(fmt.Sprintf("Found repo: %s", repoPath))
+
+	cfg, err := config.Load(repoPath)
+	if err != nil {
+		ui.PrintWarning(fmt.Sprintf("Could not load config, using defaults: %v", err))
+		cfg = config.DefaultConfig()
+	}
+
+	if dryRunFlag {
+		ui.PrintWarning("Dry run mode - no changes will be made")
+	}
+
+	ui.PrintHeader("Installing Packages")
+	if err := installPackages(plat, repoPath, cfg); err != nil {
+		ui.PrintError(fmt.Sprintf("Package installation failed: %v", err))
+	}
+
+	ui.PrintHeader("Symlinking Dotfiles")
+	if err := symlinkDotfiles(repoPath, cfg); err != nil {
+		ui.PrintError(fmt.Sprintf("Symlink failed: %v", err))
+		return err
+	}
+
+	ui.PrintHeader("Shell Configuration")
+	if err := configureShell(); err != nil {
+		ui.PrintWarning(fmt.Sprintf("Could not set default shell: %v", err))
+	}
+
+	printSummary()
+	return nil
+}
+
+func findRepo(cfg *config.Config) (string, error) {
+	if repoFlag != "" {
+		expanded := expandPath(repoFlag)
+		if isValidRepo(expanded) {
+			return expanded, nil
+		}
+		return "", fmt.Errorf("specified repo path is not valid: %s", expanded)
+	}
+
+	cwd, err := os.Getwd()
+	if err == nil && isValidRepo(cwd) {
+		return cwd, nil
+	}
+
+	repoPaths := []string{"~/.dotfiles", "~/dotfiles"}
+	if cfg != nil && len(cfg.RepoPaths) > 0 {
+		repoPaths = cfg.RepoPaths
+	}
+
+	for _, path := range repoPaths {
+		expanded := expandPath(path)
+		if isValidRepo(expanded) {
+			return expanded, nil
+		}
+	}
+
+	return "", fmt.Errorf("could not find dotfiles repository. Use --repo to specify the path")
+}
+
+func isValidRepo(path string) bool {
+	if _, err := os.Stat(filepath.Join(path, "dotfiles.yaml")); err == nil {
+		return true
+	}
+	if _, err := os.Stat(filepath.Join(path, "home")); err == nil {
+		return true
+	}
+	return false
+}
+
+func expandPath(path string) string {
+	if len(path) > 0 && path[0] == '~' {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			return filepath.Join(home, path[1:])
+		}
+	}
+	return path
+}
+
+func installPackages(plat platform.Info, repoPath string, cfg *config.Config) error {
+	if plat.IsMacOS() {
+		ui.PrintInfo("Using Homebrew for package management")
+
+		brewfile := filepath.Join(repoPath, cfg.Packages["macos"])
+		installer := packages.NewBrewInstaller(dryRunFlag)
+
+		if !installer.IsInstalled() {
+			ui.PrintStep("Installing Homebrew...")
+			if err := installer.Install(); err != nil {
+				return err
+			}
+			ui.PrintSuccess("Homebrew installed")
+		} else {
+			ui.PrintSuccess("Homebrew already installed")
+		}
+
+		if _, err := os.Stat(brewfile); err == nil {
+			ui.PrintStep("Installing packages from Brewfile...")
+			if err := installer.InstallPackages(brewfile); err != nil {
+				return err
+			}
+			ui.PrintSuccess("Packages installed")
+		} else {
+			ui.PrintWarning("No Brewfile found, skipping package installation")
+		}
+	} else if plat.IsLinux() {
+		ui.PrintInfo("Using apt for package management")
+
+		packagesFile := filepath.Join(repoPath, cfg.Packages["linux"])
+		installer := packages.NewAptInstaller(dryRunFlag)
+
+		if !installer.IsAvailable() {
+			ui.PrintWarning("apt-get not available, skipping package installation")
+			return nil
+		}
+
+		if _, err := os.Stat(packagesFile); err == nil {
+			ui.PrintStep("Installing packages from packages.txt...")
+			if err := installer.InstallPackages(packagesFile); err != nil {
+				return err
+			}
+			ui.PrintSuccess("Packages installed")
+		} else {
+			ui.PrintWarning("No packages.txt found, skipping package installation")
+		}
+	} else {
+		ui.PrintWarning("Unsupported platform for package installation")
+	}
+
+	return nil
+}
+
+func symlinkDotfiles(repoPath string, cfg *config.Config) error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("could not get home directory: %w", err)
+	}
+
+	manager := symlink.NewManager(repoPath, homeDir, dryRunFlag)
+	results := manager.LinkAll(cfg.Symlinks)
+
+	var created, skipped, backedUp, errors int
+	for _, result := range results {
+		switch {
+		case result.Error != nil:
+			ui.PrintError(fmt.Sprintf("%s: %v", result.Path, result.Error))
+			errors++
+		case result.Action == "created" || result.Action == "would_create":
+			ui.PrintSuccess(fmt.Sprintf("%s %s", result.Path, ui.SubtleStyle.Render("("+result.Action+")")))
+			created++
+		case result.Action == "backed_up":
+			ui.PrintSuccess(fmt.Sprintf("%s %s", result.Path, ui.WarningStyle.Render("(backed up existing)")))
+			backedUp++
+		case result.Action == "skipped":
+			ui.PrintStep(fmt.Sprintf("%s %s", result.Path, ui.SubtleStyle.Render("(already linked)")))
+			skipped++
+		}
+	}
+
+	if backupDir := manager.GetBackupDir(); backupDir != "" {
+		ui.PrintWarning(fmt.Sprintf("Existing files backed up to: %s", backupDir))
+	}
+
+	ui.PrintInfo(fmt.Sprintf("Summary: %d created, %d skipped, %d backed up, %d errors", created, skipped, backedUp, errors))
+
+	if errors > 0 {
+		return fmt.Errorf("%d symlink errors occurred", errors)
+	}
+	return nil
+}
+
+func configureShell() error {
+	if packages.IsZshDefault() {
+		ui.PrintSuccess("zsh is already the default shell")
+		return nil
+	}
+
+	ui.PrintStep("Setting zsh as default shell...")
+	if err := packages.SetDefaultShell(dryRunFlag); err != nil {
+		return err
+	}
+	ui.PrintSuccess("Default shell set to zsh")
+	return nil
+}
+
+func printSummary() {
+	ui.PrintHeader("Setup Complete!")
+	fmt.Println()
+	ui.PrintSuccess("🎉 Your development environment is ready!")
+	fmt.Println()
+	ui.PrintInfo("Next steps:")
+	ui.PrintList([]string{
+		"Restart your terminal or run: exec zsh",
+		"Run 'dotfiles ssh' to set up SSH keys (coming soon)",
+	})
+}

@@ -1,0 +1,21 @@
+# dotfiles.yaml - Configuration for the dotfiles CLI
+
+# Files/directories to symlink from home/ to $HOME
+symlinks:
+  - .zshrc
+  - .gitconfig
+  - .tmux.conf
+  - .ssh/config
+  - .config/ghostty
+  - .config/nvim
+  - .config/zsh
+
+# Platform-specific package files
+packages:
+  macos: Brewfile
+  linux: packages.txt
+
+# Paths to check when looking for the dotfiles repo
+repo_paths:
+  - ~/.dotfiles
+  - ~/dotfiles
