@@ -8,7 +8,8 @@ symlinks:
   - .ssh/config
   - .config/ghostty
   - .config/nvim
-  - .config/zsh
+  - .config/zsh/plugins.txt
+  - .config/zsh/starship.toml
 
 # Paths to check when looking for the dotfiles repo
 repo_paths:
