@@ -1,7 +1,4 @@
-# Brewfile - Homebrew packages for macOS
-
-# Taps
-tap "homebrew/cask-fonts"
+# Brewfile - Core CLI tools (macOS + Linux)
 
 # Shell and core utilities
 brew "zsh"
@@ -46,12 +43,3 @@ brew "golangci-lint"
 
 # Build tools
 brew "make"
-
-# Fonts
-cask "font-jetbrains-mono-nerd-font"
-cask "font-fira-mono-nerd-font"
-cask "font-fira-code-nerd-font"
-
-# Apps
-cask "1password-cli"
-cask "ghostty"

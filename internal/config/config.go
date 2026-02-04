@@ -7,10 +7,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type PackagesConfig struct {
+	Brewfile      string `yaml:"brewfile"`
+	BrewfileMacOS string `yaml:"brewfile_macos"`
+}
+
 type Config struct {
-	Symlinks  []string          `yaml:"symlinks"`
-	Packages  map[string]string `yaml:"packages"`
-	RepoPaths []string          `yaml:"repo_paths"`
+	Symlinks  []string       `yaml:"symlinks"`
+	Packages  PackagesConfig `yaml:"packages"`
+	RepoPaths []string       `yaml:"repo_paths"`
 }
 
 func Load(repoPath string) (*Config, error) {
@@ -37,9 +42,9 @@ func DefaultConfig() *Config {
 			".config/nvim",
 			".config/zsh",
 		},
-		Packages: map[string]string{
-			"macos": "Brewfile",
-			"linux": "packages.txt",
+		Packages: PackagesConfig{
+			Brewfile:      "Brewfile",
+			BrewfileMacOS: "Brewfile.macos",
 		},
 		RepoPaths: []string{
 			"~/.dotfiles",

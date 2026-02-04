@@ -45,10 +45,21 @@ func (b *BrewInstaller) Install() error {
 func (b *BrewInstaller) initShellEnv() error {
 	var brewPath string
 
-	if runtime.GOARCH == "arm64" {
-		brewPath = "/opt/homebrew/bin/brew"
+	if runtime.GOOS == "darwin" {
+		if runtime.GOARCH == "arm64" {
+			brewPath = "/opt/homebrew/bin/brew"
+		} else {
+			brewPath = "/usr/local/bin/brew"
+		}
 	} else {
-		brewPath = "/usr/local/bin/brew"
+		// Linux Homebrew
+		brewPath = "/home/linuxbrew/.linuxbrew/bin/brew"
+		if home := os.Getenv("HOME"); home != "" {
+			altPath := filepath.Join(home, ".linuxbrew/bin/brew")
+			if _, err := os.Stat(altPath); err == nil {
+				brewPath = altPath
+			}
+		}
 	}
 
 	if _, err := os.Stat(brewPath); os.IsNotExist(err) {

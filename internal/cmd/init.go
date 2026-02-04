@@ -22,7 +22,7 @@ var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Initialize your development environment",
 	Long: `Initialize sets up your development environment by:
-  1. Installing packages (Homebrew on macOS, apt on Linux)
+  1. Installing packages via Homebrew
   2. Symlinking dotfiles to your home directory
   3. Setting zsh as your default shell`,
 	RunE: runInit,
@@ -128,53 +128,42 @@ func expandPath(path string) string {
 }
 
 func installPackages(plat platform.Info, repoPath string, cfg *config.Config) error {
-	if plat.IsMacOS() {
-		ui.PrintInfo("Using Homebrew for package management")
+	ui.PrintInfo("Using Homebrew for package management")
 
-		brewfile := filepath.Join(repoPath, cfg.Packages["macos"])
-		installer := packages.NewBrewInstaller(dryRunFlag)
+	installer := packages.NewBrewInstaller(dryRunFlag)
 
-		if !installer.IsInstalled() {
-			ui.PrintStep("Installing Homebrew...")
-			if err := installer.Install(); err != nil {
-				return err
-			}
-			ui.PrintSuccess("Homebrew installed")
-		} else {
-			ui.PrintSuccess("Homebrew already installed")
+	if !installer.IsInstalled() {
+		ui.PrintStep("Installing Homebrew...")
+		if err := installer.Install(); err != nil {
+			return err
 		}
-
-		if _, err := os.Stat(brewfile); err == nil {
-			ui.PrintStep("Installing packages from Brewfile...")
-			if err := installer.InstallPackages(brewfile); err != nil {
-				return err
-			}
-			ui.PrintSuccess("Packages installed")
-		} else {
-			ui.PrintWarning("No Brewfile found, skipping package installation")
-		}
-	} else if plat.IsLinux() {
-		ui.PrintInfo("Using apt for package management")
-
-		packagesFile := filepath.Join(repoPath, cfg.Packages["linux"])
-		installer := packages.NewAptInstaller(dryRunFlag)
-
-		if !installer.IsAvailable() {
-			ui.PrintWarning("apt-get not available, skipping package installation")
-			return nil
-		}
-
-		if _, err := os.Stat(packagesFile); err == nil {
-			ui.PrintStep("Installing packages from packages.txt...")
-			if err := installer.InstallPackages(packagesFile); err != nil {
-				return err
-			}
-			ui.PrintSuccess("Packages installed")
-		} else {
-			ui.PrintWarning("No packages.txt found, skipping package installation")
-		}
+		ui.PrintSuccess("Homebrew installed")
 	} else {
-		ui.PrintWarning("Unsupported platform for package installation")
+		ui.PrintSuccess("Homebrew already installed")
+	}
+
+	// Install core packages (all platforms)
+	brewfile := filepath.Join(repoPath, cfg.Packages.Brewfile)
+	if _, err := os.Stat(brewfile); err == nil {
+		ui.PrintStep("Installing packages from Brewfile...")
+		if err := installer.InstallPackages(brewfile); err != nil {
+			return err
+		}
+		ui.PrintSuccess("Core packages installed")
+	} else {
+		ui.PrintWarning("No Brewfile found, skipping core packages")
+	}
+
+	// Install macOS-specific packages (fonts, apps)
+	if plat.IsMacOS() && cfg.Packages.BrewfileMacOS != "" {
+		brewfileMacOS := filepath.Join(repoPath, cfg.Packages.BrewfileMacOS)
+		if _, err := os.Stat(brewfileMacOS); err == nil {
+			ui.PrintStep("Installing macOS packages (fonts, apps)...")
+			if err := installer.InstallPackages(brewfileMacOS); err != nil {
+				return err
+			}
+			ui.PrintSuccess("macOS packages installed")
+		}
 	}
 
 	return nil
