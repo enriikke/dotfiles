@@ -229,19 +229,21 @@ func (m *dashboardModel) refreshAgents() {
 	m.agents = registry.All()
 	m.lastUpdate = time.Now()
 
-	// Validate selected index
-	if m.selected >= len(m.agents) {
-		m.selected = max(0, len(m.agents)-1)
+	// Validate selected index - must be within bounds
+	if len(m.agents) == 0 {
+		m.selected = 0
+	} else if m.selected >= len(m.agents) {
+		m.selected = len(m.agents) - 1
 	}
 
 	// Update log viewport if showing logs
-	if m.showLogs && len(m.agents) > 0 && m.selected < len(m.agents) {
+	if m.showLogs && len(m.agents) > 0 && m.selected >= 0 && m.selected < len(m.agents) {
 		m.loadLogs()
 	}
 }
 
 func (m *dashboardModel) loadLogs() {
-	if m.selected >= len(m.agents) {
+	if len(m.agents) == 0 || m.selected < 0 || m.selected >= len(m.agents) {
 		return
 	}
 
@@ -309,7 +311,7 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, dashboardKeys.Down):
 			if m.focusedPanel == panelList {
-				if m.selected < len(m.agents)-1 {
+				if len(m.agents) > 0 && m.selected < len(m.agents)-1 {
 					m.selected++
 					if m.showLogs {
 						m.loadLogs()
@@ -343,13 +345,17 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case key.Matches(msg, dashboardKeys.Kill):
-			if len(m.agents) > 0 && m.selected < len(m.agents) {
+			if len(m.agents) > 0 && m.selected >= 0 && m.selected < len(m.agents) {
 				entry := m.agents[m.selected]
+				idShort := entry.ID
+				if len(idShort) > 8 {
+					idShort = idShort[:8]
+				}
 				if err := Kill(entry.ID); err != nil {
 					m.message = fmt.Sprintf("Failed to kill: %v", err)
 					m.messageIsErr = true
 				} else {
-					m.message = fmt.Sprintf("Killed %s", entry.ID[:8])
+					m.message = fmt.Sprintf("Killed %s", idShort)
 					m.refreshAgents()
 				}
 			}
@@ -489,13 +495,23 @@ func (m dashboardModel) renderListPanel(width int) string {
 	var content strings.Builder
 
 	if len(m.agents) == 0 {
-		empty := lipgloss.NewStyle().
-			Foreground(gray).
-			Italic(true).
+		// Calculate height for centering
+		listHeight := m.height - 5
+		if listHeight < 10 {
+			listHeight = 10
+		}
+
+		emptyBox := lipgloss.NewStyle().
 			Width(innerWidth).
-			Align(lipgloss.Center).
-			Render("\nNo agents running\n\nStart one with:\nagent run copilot")
-		content.WriteString(empty)
+			Height(listHeight).
+			Align(lipgloss.Center, lipgloss.Center).
+			Render(
+				lipgloss.NewStyle().Foreground(gray).Render("🤖") + "\n\n" +
+					lipgloss.NewStyle().Foreground(lightGray).Bold(true).Render("No agents running") + "\n\n" +
+					lipgloss.NewStyle().Foreground(gray).Render("Start one with:") + "\n" +
+					lipgloss.NewStyle().Foreground(cyan).Render("agent run copilot"),
+			)
+		content.WriteString(emptyBox)
 	} else {
 		for i, agent := range m.agents {
 			// Status indicator
@@ -568,18 +584,31 @@ func (m dashboardModel) renderDetailPanel(width int) string {
 
 	var content strings.Builder
 
-	if len(m.agents) == 0 || m.selected >= len(m.agents) {
-		empty := lipgloss.NewStyle().
-			Foreground(gray).
-			Italic(true).
+	if len(m.agents) == 0 || m.selected < 0 || m.selected >= len(m.agents) {
+		// Centered empty state
+		detailHeight := m.height - 5
+		if detailHeight < 10 {
+			detailHeight = 10
+		}
+
+		emptyBox := lipgloss.NewStyle().
 			Width(innerWidth).
-			Render("\nSelect an agent to view details")
-		content.WriteString(empty)
+			Height(detailHeight).
+			Align(lipgloss.Center, lipgloss.Center).
+			Render(
+				lipgloss.NewStyle().Foreground(gray).Render("📋") + "\n\n" +
+					lipgloss.NewStyle().Foreground(lightGray).Render("Select an agent to view details"),
+			)
+		content.WriteString(emptyBox)
 	} else {
 		agent := m.agents[m.selected]
 
-		// Agent info section
-		content.WriteString(m.renderDetailRow("ID", agent.ID[:12]))
+		// Agent info section - safely truncate ID
+		idDisplay := agent.ID
+		if len(idDisplay) > 12 {
+			idDisplay = idDisplay[:12]
+		}
+		content.WriteString(m.renderDetailRow("ID", idDisplay))
 		content.WriteString(m.renderDetailRow("Agent", agent.Agent))
 		content.WriteString(m.renderDetailRow("Project", agent.Project))
 		content.WriteString(m.renderDetailRow("Directory", truncatePath(agent.Cwd, innerWidth-14)))
@@ -711,9 +740,4 @@ func truncatePath(path string, maxLen int) string {
 	return short
 }
 
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
+
