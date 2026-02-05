@@ -2,10 +2,14 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/huh"
 	"github.com/enriikke/dotfiles/internal/agents"
+	"github.com/enriikke/dotfiles/internal/config"
 	"github.com/enriikke/dotfiles/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -103,6 +107,15 @@ func runAI(cmd *cobra.Command, args []string) error {
 	// Print summary
 	printAISummary(results, dryRunFlag)
 
+	// Build and install the agent wrapper CLI
+	if !dryRunFlag {
+		if err := buildAndInstallAgentCLI(); err != nil {
+			ui.PrintWarning(fmt.Sprintf("Failed to install agent CLI: %v", err))
+		}
+	} else {
+		ui.PrintInfo("Would build and install agent CLI to ~/.local/bin/agent")
+	}
+
 	return nil
 }
 
@@ -175,4 +188,97 @@ func printAISummary(results []agents.InstallResult, dryRun bool) {
 		fmt.Println()
 		ui.PrintWarning("Some agents failed to install. Check the errors above.")
 	}
+}
+
+// buildAndInstallAgentCLI builds the agent wrapper CLI and installs it to ~/.local/bin
+func buildAndInstallAgentCLI() error {
+	ui.PrintHeader("Installing Agent CLI")
+
+	// Find the dotfiles repo root using the same logic as other commands
+	repoRoot, err := findDotfilesRepo()
+	if err != nil {
+		return fmt.Errorf("cannot find dotfiles repo with cmd/agent source: %w", err)
+	}
+
+	// Verify cmd/agent exists
+	if _, err := os.Stat(filepath.Join(repoRoot, "cmd/agent/main.go")); err != nil {
+		return fmt.Errorf("cmd/agent/main.go not found in %s", repoRoot)
+	}
+
+	// Ensure ~/.local/bin exists
+	localBin := filepath.Join(os.Getenv("HOME"), ".local", "bin")
+	if err := os.MkdirAll(localBin, 0755); err != nil {
+		return fmt.Errorf("failed to create %s: %w", localBin, err)
+	}
+
+	agentPath := filepath.Join(localBin, "agent")
+
+	// Build the agent CLI
+	ui.PrintStep("Building agent CLI...")
+	buildCmd := exec.Command("go", "build", "-o", agentPath, "./cmd/agent")
+	buildCmd.Dir = repoRoot
+	buildCmd.Stdout = os.Stdout
+	buildCmd.Stderr = os.Stderr
+
+	if err := buildCmd.Run(); err != nil {
+		return fmt.Errorf("failed to build agent CLI: %w", err)
+	}
+
+	ui.PrintSuccess(fmt.Sprintf("Installed agent CLI to %s", agentPath))
+	ui.PrintInfo("Run 'agent run copilot' to wrap an AI agent")
+	ui.PrintInfo("Run 'agent dashboard' to see all running agents")
+
+	return nil
+}
+
+// findDotfilesRepo finds the dotfiles repository root
+// Priority: cwd, then executable dir, then default repo_paths
+func findDotfilesRepo() (string, error) {
+	// Check cwd first
+	cwd, err := os.Getwd()
+	if err == nil && isAgentSourceRepo(cwd) {
+		return cwd, nil
+	}
+
+	// Check executable directory
+	execPath, err := os.Executable()
+	if err == nil {
+		execDir := filepath.Dir(execPath)
+		if isAgentSourceRepo(execDir) {
+			return execDir, nil
+		}
+	}
+
+	// Check default repo paths (same as config defaults)
+	defaultPaths := []string{"~/.dotfiles", "~/dotfiles"}
+
+	// Try to load config from any valid repo to get custom repo_paths
+	for _, path := range defaultPaths {
+		expanded := expandPath(path)
+		if cfg, err := config.Load(expanded); err == nil && len(cfg.RepoPaths) > 0 {
+			// Use the custom repo_paths from config
+			for _, repoPath := range cfg.RepoPaths {
+				expandedRepo := expandPath(repoPath)
+				if isAgentSourceRepo(expandedRepo) {
+					return expandedRepo, nil
+				}
+			}
+		}
+	}
+
+	// Fall back to checking default paths directly
+	for _, path := range defaultPaths {
+		expanded := expandPath(path)
+		if isAgentSourceRepo(expanded) {
+			return expanded, nil
+		}
+	}
+
+	return "", fmt.Errorf("no valid dotfiles repo found")
+}
+
+// isAgentSourceRepo checks if the path contains cmd/agent source
+func isAgentSourceRepo(path string) bool {
+	_, err := os.Stat(filepath.Join(path, "cmd/agent/main.go"))
+	return err == nil
 }
