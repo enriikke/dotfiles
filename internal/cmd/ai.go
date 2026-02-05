@@ -2,6 +2,9 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/huh"
@@ -103,6 +106,15 @@ func runAI(cmd *cobra.Command, args []string) error {
 	// Print summary
 	printAISummary(results, dryRunFlag)
 
+	// Build and install the agent wrapper CLI
+	if !dryRunFlag {
+		if err := buildAndInstallAgentCLI(); err != nil {
+			ui.PrintWarning(fmt.Sprintf("Failed to install agent CLI: %v", err))
+		}
+	} else {
+		ui.PrintInfo("Would build and install agent CLI to ~/.local/bin/agent")
+	}
+
 	return nil
 }
 
@@ -175,4 +187,60 @@ func printAISummary(results []agents.InstallResult, dryRun bool) {
 		fmt.Println()
 		ui.PrintWarning("Some agents failed to install. Check the errors above.")
 	}
+}
+
+// buildAndInstallAgentCLI builds the agent wrapper CLI and installs it to ~/.local/bin
+func buildAndInstallAgentCLI() error {
+	ui.PrintHeader("Installing Agent CLI")
+
+	// Get the dotfiles repo root (where we're running from)
+	execPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("cannot determine executable path: %w", err)
+	}
+
+	// The dotfiles binary is at the repo root, agent source is in cmd/agent
+	// We need to find the repo root by checking common locations
+	var repoRoot string
+	candidates := []string{
+		filepath.Dir(execPath),                                             // Same dir as dotfiles binary
+		filepath.Join(os.Getenv("HOME"), "Projects/ongoing/enriikke/dotfiles"), // Your common path
+		filepath.Join(os.Getenv("HOME"), ".dotfiles"),                      // Common dotfiles location
+	}
+
+	for _, candidate := range candidates {
+		if _, err := os.Stat(filepath.Join(candidate, "cmd/agent/main.go")); err == nil {
+			repoRoot = candidate
+			break
+		}
+	}
+
+	if repoRoot == "" {
+		return fmt.Errorf("cannot find dotfiles repo with cmd/agent source")
+	}
+
+	// Ensure ~/.local/bin exists
+	localBin := filepath.Join(os.Getenv("HOME"), ".local", "bin")
+	if err := os.MkdirAll(localBin, 0755); err != nil {
+		return fmt.Errorf("failed to create %s: %w", localBin, err)
+	}
+
+	agentPath := filepath.Join(localBin, "agent")
+
+	// Build the agent CLI
+	ui.PrintStep("Building agent CLI...")
+	buildCmd := exec.Command("go", "build", "-o", agentPath, "./cmd/agent")
+	buildCmd.Dir = repoRoot
+	buildCmd.Stdout = os.Stdout
+	buildCmd.Stderr = os.Stderr
+
+	if err := buildCmd.Run(); err != nil {
+		return fmt.Errorf("failed to build agent CLI: %w", err)
+	}
+
+	ui.PrintSuccess(fmt.Sprintf("Installed agent CLI to %s", agentPath))
+	ui.PrintInfo("Run 'agent run copilot' to wrap an AI agent")
+	ui.PrintInfo("Run 'agent dashboard' to see all running agents")
+
+	return nil
 }
