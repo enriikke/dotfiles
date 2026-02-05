@@ -192,41 +192,103 @@ func (t *outputTracker) recordOutput(chunk []byte) {
 
 	t.lastOutput = time.Now()
 
-	// Accumulate output to extract last meaningful line
+	// Accumulate output to extract meaningful content
 	t.outputBuffer.Write(chunk)
 
-	// Extract last non-empty line from buffer
+	// Extract meaningful content from buffer
 	content := t.outputBuffer.String()
+
+	// Split on both \n and \r to handle different line ending styles
+	content = strings.ReplaceAll(content, "\r\n", "\n")
+	content = strings.ReplaceAll(content, "\r", "\n")
 	lines := strings.Split(content, "\n")
 
-	// Find last non-empty line (after stripping ANSI codes)
-	for i := len(lines) - 1; i >= 0; i-- {
-		// Strip ANSI escape codes
-		cleaned := stripAnsi(lines[i])
+	// Look for the best line to display (most meaningful, recent)
+	bestLine := ""
+	bestScore := 0
+
+	for _, rawLine := range lines {
+		// Strip ANSI codes
+		cleaned := stripAnsi(rawLine)
 		cleaned = strings.TrimSpace(cleaned)
 
-		// Skip empty lines
 		if cleaned == "" {
 			continue
 		}
 
-		// Skip common noise patterns
+		// Skip noise patterns
 		if isNoisePattern(cleaned) {
 			continue
 		}
 
-		t.lastLine = truncateLine(cleaned, 100)
-		break
-	}
-
-	// Keep buffer from growing too large (keep last 2KB)
-	if t.outputBuffer.Len() > 2048 {
-		content := t.outputBuffer.String()
-		t.outputBuffer.Reset()
-		if len(content) > 1024 {
-			t.outputBuffer.WriteString(content[len(content)-1024:])
+		// Score the line for meaningfulness
+		score := scoreLineQuality(cleaned)
+		if score > bestScore {
+			bestScore = score
+			bestLine = cleaned
 		}
 	}
+
+	if bestLine != "" {
+		t.lastLine = truncateLine(bestLine, 100)
+	}
+
+	// Keep buffer from growing too large (keep last 4KB for better context)
+	if t.outputBuffer.Len() > 4096 {
+		content := t.outputBuffer.String()
+		t.outputBuffer.Reset()
+		if len(content) > 2048 {
+			t.outputBuffer.WriteString(content[len(content)-2048:])
+		}
+	}
+}
+
+// scoreLineQuality returns a score indicating how meaningful a line is
+func scoreLineQuality(line string) int {
+	score := len(line) // Base score is length
+
+	// Boost lines that look like actual content
+	lowerLine := strings.ToLower(line)
+
+	// Penalize common UI chrome
+	chromePatterns := []string{
+		"type @", "mention files", "ctrl+c", "remaining requests",
+		"total usage", "api time", "session time", "code changes",
+		"breakdown by", "resume this session", "premium request",
+		"shift+tab", "cycle mode",
+	}
+	for _, pattern := range chromePatterns {
+		if strings.Contains(lowerLine, pattern) {
+			return 0 // Skip UI chrome entirely
+		}
+	}
+
+	// Boost conversational content
+	conversationalPatterns := []string{
+		"hello", "help", "can i", "would you", "please", "thanks",
+		"error", "warning", "success", "failed", "completed",
+		"creating", "updating", "deleting", "running", "building",
+		"file", "function", "class", "method", "variable",
+	}
+	for _, pattern := range conversationalPatterns {
+		if strings.Contains(lowerLine, pattern) {
+			score += 50
+		}
+	}
+
+	// Boost lines that start with common response indicators
+	if strings.HasPrefix(line, "•") || strings.HasPrefix(line, "●") ||
+		strings.HasPrefix(line, "-") || strings.HasPrefix(line, "*") ||
+		strings.HasPrefix(line, ">") {
+		score += 30
+	}
+
+	// Penalize very short lines
+	if len(line) < 10 {
+		score -= 20
+	}
+
+	return score
 }
 
 func (t *outputTracker) run(stop chan struct{}) {
