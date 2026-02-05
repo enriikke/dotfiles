@@ -199,22 +199,32 @@ func (t *outputTracker) recordOutput(chunk []byte) {
 	content := t.outputBuffer.String()
 	lines := strings.Split(content, "\n")
 
-	// Find last non-empty line
+	// Find last non-empty line (after stripping ANSI codes)
 	for i := len(lines) - 1; i >= 0; i-- {
-		line := strings.TrimSpace(lines[i])
-		// Skip empty lines and common control sequences
-		if line != "" && !strings.HasPrefix(line, "\033[") {
-			t.lastLine = truncateLine(line, 100)
-			break
+		// Strip ANSI escape codes
+		cleaned := stripAnsi(lines[i])
+		cleaned = strings.TrimSpace(cleaned)
+
+		// Skip empty lines
+		if cleaned == "" {
+			continue
 		}
+
+		// Skip common noise patterns
+		if isNoisePattern(cleaned) {
+			continue
+		}
+
+		t.lastLine = truncateLine(cleaned, 100)
+		break
 	}
 
-	// Keep buffer from growing too large (keep last 1KB)
-	if t.outputBuffer.Len() > 1024 {
+	// Keep buffer from growing too large (keep last 2KB)
+	if t.outputBuffer.Len() > 2048 {
 		content := t.outputBuffer.String()
 		t.outputBuffer.Reset()
-		if len(content) > 512 {
-			t.outputBuffer.WriteString(content[len(content)-512:])
+		if len(content) > 1024 {
+			t.outputBuffer.WriteString(content[len(content)-1024:])
 		}
 	}
 }
@@ -299,4 +309,90 @@ func truncateLine(line string, maxLen int) string {
 		return line[:maxLen-3] + "..."
 	}
 	return line
+}
+
+// stripAnsi removes ANSI escape codes from a string
+func stripAnsi(s string) string {
+	// Match ANSI escape sequences: ESC[ ... m (SGR), ESC[ ... other codes
+	// Also match OSC sequences: ESC] ... BEL/ST
+	var result strings.Builder
+	i := 0
+	for i < len(s) {
+		if i < len(s)-1 && (s[i] == '\033' || s[i] == '\x9b') {
+			// Start of escape sequence
+			if s[i] == '\033' && i+1 < len(s) {
+				if s[i+1] == '[' {
+					// CSI sequence: ESC [ ... letter
+					j := i + 2
+					for j < len(s) && ((s[j] >= '0' && s[j] <= '9') || s[j] == ';' || s[j] == '?' || s[j] == '!' || s[j] == '"' || s[j] == '\'' || s[j] == ' ') {
+						j++
+					}
+					if j < len(s) {
+						j++ // Skip final byte
+					}
+					i = j
+					continue
+				} else if s[i+1] == ']' {
+					// OSC sequence: ESC ] ... BEL or ST
+					j := i + 2
+					for j < len(s) && s[j] != '\007' && s[j] != '\033' {
+						j++
+					}
+					if j < len(s) {
+						if s[j] == '\033' && j+1 < len(s) && s[j+1] == '\\' {
+							j += 2
+						} else {
+							j++
+						}
+					}
+					i = j
+					continue
+				} else if s[i+1] == '(' || s[i+1] == ')' {
+					// Character set selection
+					i += 3
+					continue
+				} else {
+					// Other escape (skip 2 chars)
+					i += 2
+					continue
+				}
+			}
+			i++
+			continue
+		}
+		// Skip other control characters except newline/tab
+		if s[i] < 32 && s[i] != '\n' && s[i] != '\t' && s[i] != '\r' {
+			i++
+			continue
+		}
+		result.WriteByte(s[i])
+		i++
+	}
+	return result.String()
+}
+
+// isNoisePattern checks if a line is common TUI noise we should skip
+func isNoisePattern(s string) bool {
+	// Skip lines that are just box drawing characters, dashes, etc.
+	noiseChars := "─│┌┐└┘├┤┬┴┼━┃┏┓┗┛┣┫┳┻╋═║╔╗╚╝╠╣╦╩╬-=_|+*░▒▓█▀▄■□▪▫●○◐◑◒◓◔◕◖◗"
+	cleaned := strings.TrimSpace(s)
+
+	if cleaned == "" {
+		return true
+	}
+
+	// Check if line is mostly noise characters
+	noiseCount := 0
+	for _, r := range cleaned {
+		if strings.ContainsRune(noiseChars, r) || r == ' ' {
+			noiseCount++
+		}
+	}
+
+	// If more than 80% noise, skip it
+	if float64(noiseCount)/float64(len([]rune(cleaned))) > 0.8 {
+		return true
+	}
+
+	return false
 }
