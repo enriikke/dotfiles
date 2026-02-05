@@ -100,8 +100,14 @@ func (r *Registry) Save() error {
 		return fmt.Errorf("failed to marshal registry: %w", err)
 	}
 
-	if err := os.WriteFile(r.path, data, 0644); err != nil {
+	// Write atomically using temp file
+	tmpPath := r.path + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write registry: %w", err)
+	}
+	if err := os.Rename(tmpPath, r.path); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("failed to rename registry: %w", err)
 	}
 
 	return nil
@@ -115,30 +121,44 @@ func (r *Registry) Add(entry Entry) error {
 	return r.Save()
 }
 
-// Update updates an existing agent entry
+// Update updates an existing agent entry with fresh data
 func (r *Registry) Update(id string, fn func(*Entry)) error {
-	r.mu.Lock()
-	for i := range r.Agents {
-		if r.Agents[i].ID == id {
-			fn(&r.Agents[i])
+	// Reload from disk to get latest state
+	fresh, err := LoadRegistry()
+	if err != nil {
+		return err
+	}
+
+	fresh.mu.Lock()
+	for i := range fresh.Agents {
+		if fresh.Agents[i].ID == id {
+			fn(&fresh.Agents[i])
 			break
 		}
 	}
-	r.mu.Unlock()
-	return r.Save()
+	fresh.mu.Unlock()
+
+	return fresh.Save()
 }
 
 // Remove removes an agent entry
 func (r *Registry) Remove(id string) error {
-	r.mu.Lock()
-	for i := range r.Agents {
-		if r.Agents[i].ID == id {
-			r.Agents = append(r.Agents[:i], r.Agents[i+1:]...)
+	// Reload from disk to get latest state
+	fresh, err := LoadRegistry()
+	if err != nil {
+		return err
+	}
+
+	fresh.mu.Lock()
+	for i := range fresh.Agents {
+		if fresh.Agents[i].ID == id {
+			fresh.Agents = append(fresh.Agents[:i], fresh.Agents[i+1:]...)
 			break
 		}
 	}
-	r.mu.Unlock()
-	return r.Save()
+	fresh.mu.Unlock()
+
+	return fresh.Save()
 }
 
 // Find finds an agent by ID (supports prefix matching)

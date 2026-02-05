@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -9,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -100,68 +100,67 @@ func Run(args []string, name string) error {
 
 	// Clean up on exit
 	defer func() {
-		registry, _ := LoadRegistry()
-		if registry != nil {
-			registry.Remove(id)
+		reg, _ := LoadRegistry()
+		if reg != nil {
+			reg.Remove(id)
 		}
 	}()
 
 	// Create output tracker
-	tracker := &outputTracker{
-		id:         id,
-		registry:   registry,
-		lastOutput: time.Now(),
-	}
+	tracker := newOutputTracker(id, logFile)
 
-	// Start idle checker
-	stopIdle := make(chan struct{})
-	go tracker.idleChecker(stopIdle)
-	defer close(stopIdle)
+	// Start idle checker and status updater
+	stopTracker := make(chan struct{})
+	go tracker.run(stopTracker)
+	defer close(stopTracker)
 
 	// Copy stdin to pty
 	go func() {
 		io.Copy(ptmx, os.Stdin)
 	}()
 
-	// Copy pty output to stdout and log file, tracking activity
-	reader := bufio.NewReader(ptmx)
+	// Copy pty output to stdout and track activity
+	// Use a buffer to read chunks instead of waiting for newlines
+	buf := make([]byte, 4096)
 	for {
-		line, err := reader.ReadString('\n')
+		n, err := ptmx.Read(buf)
 		if err != nil {
 			if err != io.EOF {
 				// Ignore read errors on exit
 			}
 			break
 		}
+		if n > 0 {
+			chunk := buf[:n]
 
-		// Write to stdout
-		os.Stdout.WriteString(line)
+			// Write to stdout
+			os.Stdout.Write(chunk)
 
-		// Write to log file
-		logFile.WriteString(line)
+			// Write to log file
+			logFile.Write(chunk)
 
-		// Track activity
-		tracker.recordOutput(line)
+			// Track activity
+			tracker.recordOutput(chunk)
+		}
 	}
 
 	// Wait for command to finish
 	err = cmd.Wait()
 
 	// Update final status
-	registry, _ = LoadRegistry()
-	if registry != nil {
-		exitCode := 0
-		if err != nil {
-			if exitErr, ok := err.(*exec.ExitError); ok {
-				exitCode = exitErr.ExitCode()
-			}
+	exitCode := 0
+	status := StatusDone
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
 		}
-		registry.Update(id, func(e *Entry) {
-			if exitCode == 0 {
-				e.Status = StatusDone
-			} else {
-				e.Status = StatusError
-			}
+		status = StatusError
+	}
+
+	reg, _ := LoadRegistry()
+	if reg != nil {
+		reg.Update(id, func(e *Entry) {
+			e.Status = status
 			e.ExitCode = &exitCode
 		})
 	}
@@ -171,28 +170,57 @@ func Run(args []string, name string) error {
 
 // outputTracker tracks agent output for status updates
 type outputTracker struct {
-	id         string
-	registry   *Registry
-	lastOutput time.Time
-	lastLine   string
+	id           string
+	logFile      *os.File
+	lastOutput   time.Time
+	lastLine     string
+	outputBuffer strings.Builder
+	mu           sync.Mutex
 }
 
-func (t *outputTracker) recordOutput(line string) {
+func newOutputTracker(id string, logFile *os.File) *outputTracker {
+	return &outputTracker{
+		id:         id,
+		logFile:    logFile,
+		lastOutput: time.Now(),
+	}
+}
+
+func (t *outputTracker) recordOutput(chunk []byte) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
 	t.lastOutput = time.Now()
-	t.lastLine = truncateLine(line, 100)
 
-	// Update registry (debounced - only update every second at most)
-	go func() {
-		t.registry.Update(t.id, func(e *Entry) {
-			e.Status = StatusRunning
-			e.LastOutputAt = t.lastOutput
-			e.LastOutputLine = t.lastLine
-		})
-	}()
+	// Accumulate output to extract last meaningful line
+	t.outputBuffer.Write(chunk)
+
+	// Extract last non-empty line from buffer
+	content := t.outputBuffer.String()
+	lines := strings.Split(content, "\n")
+
+	// Find last non-empty line
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		// Skip empty lines and common control sequences
+		if line != "" && !strings.HasPrefix(line, "\033[") {
+			t.lastLine = truncateLine(line, 100)
+			break
+		}
+	}
+
+	// Keep buffer from growing too large (keep last 1KB)
+	if t.outputBuffer.Len() > 1024 {
+		content := t.outputBuffer.String()
+		t.outputBuffer.Reset()
+		if len(content) > 512 {
+			t.outputBuffer.WriteString(content[len(content)-512:])
+		}
+	}
 }
 
-func (t *outputTracker) idleChecker(stop chan struct{}) {
-	ticker := time.NewTicker(10 * time.Second)
+func (t *outputTracker) run(stop chan struct{}) {
+	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -200,15 +228,36 @@ func (t *outputTracker) idleChecker(stop chan struct{}) {
 		case <-stop:
 			return
 		case <-ticker.C:
-			if time.Since(t.lastOutput) > IdleThreshold {
-				t.registry.Update(t.id, func(e *Entry) {
-					if e.Status == StatusRunning {
-						e.Status = StatusIdle
-					}
-				})
-			}
+			t.updateRegistry()
 		}
 	}
+}
+
+func (t *outputTracker) updateRegistry() {
+	t.mu.Lock()
+	lastOutput := t.lastOutput
+	lastLine := t.lastLine
+	t.mu.Unlock()
+
+	// Determine status based on idle threshold
+	status := StatusRunning
+	if time.Since(lastOutput) > IdleThreshold {
+		status = StatusIdle
+	}
+
+	// Load fresh registry and update
+	registry, err := LoadRegistry()
+	if err != nil {
+		return
+	}
+
+	registry.Update(t.id, func(e *Entry) {
+		e.Status = status
+		e.LastOutputAt = lastOutput
+		if lastLine != "" {
+			e.LastOutputLine = lastLine
+		}
+	})
 }
 
 // detectAgentType tries to identify the agent from the command
