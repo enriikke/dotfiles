@@ -14,21 +14,21 @@ import (
 
 var (
 	// Colors
-	primaryColor = lipgloss.Color("#7C3AED")
-	successColor = lipgloss.Color("#10B981")
-	warningColor = lipgloss.Color("#F59E0B")
-	errorColor   = lipgloss.Color("#EF4444")
-	subtleColor  = lipgloss.Color("#6B7280")
+	cmdPrimaryColor = lipgloss.Color("#7C3AED")
+	cmdSuccessColor = lipgloss.Color("#10B981")
+	cmdWarningColor = lipgloss.Color("#F59E0B")
+	cmdErrorColor   = lipgloss.Color("#EF4444")
+	cmdSubtleColor  = lipgloss.Color("#6B7280")
 
-	// Styles
-	headerStyle  = lipgloss.NewStyle().Bold(true).Foreground(primaryColor)
-	idStyle      = lipgloss.NewStyle().Foreground(subtleColor)
-	projectStyle = lipgloss.NewStyle().Bold(true)
-	runningStyle = lipgloss.NewStyle().Foreground(successColor)
-	idleStyle    = lipgloss.NewStyle().Foreground(warningColor)
-	doneStyle    = lipgloss.NewStyle().Foreground(subtleColor)
-	errorStyle   = lipgloss.NewStyle().Foreground(errorColor)
-	subtleStyle  = lipgloss.NewStyle().Foreground(subtleColor)
+	// Styles for CLI output
+	cmdHeaderStyle  = lipgloss.NewStyle().Bold(true).Foreground(cmdPrimaryColor)
+	cmdIDStyle      = lipgloss.NewStyle().Foreground(cmdSubtleColor)
+	cmdProjectStyle = lipgloss.NewStyle().Bold(true)
+	cmdRunningStyle = lipgloss.NewStyle().Foreground(cmdSuccessColor)
+	cmdIdleStyle    = lipgloss.NewStyle().Foreground(cmdWarningColor)
+	cmdDoneStyle    = lipgloss.NewStyle().Foreground(cmdSubtleColor)
+	cmdErrorStyle   = lipgloss.NewStyle().Foreground(cmdErrorColor)
+	cmdSubtleStyle  = lipgloss.NewStyle().Foreground(cmdSubtleColor)
 )
 
 // List prints all agents in a simple table format
@@ -40,18 +40,18 @@ func List() error {
 
 	agents := registry.All()
 	if len(agents) == 0 {
-		fmt.Println(subtleStyle.Render("No agents running"))
+		fmt.Println(cmdSubtleStyle.Render("No agents running"))
 		return nil
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, headerStyle.Render("ID\tPROJECT\tAGENT\tSTATUS\tLAST ACTIVITY"))
+	fmt.Fprintln(w, cmdHeaderStyle.Render("ID\tPROJECT\tAGENT\tSTATUS\tLAST ACTIVITY"))
 
 	for _, e := range agents {
-		id := idStyle.Render(e.ID[:8])
-		project := projectStyle.Render(e.Project)
+		id := cmdIDStyle.Render(e.ID[:8])
+		project := cmdProjectStyle.Render(e.Project)
 		if e.Name != "" {
-			project = projectStyle.Render(e.Name)
+			project = cmdProjectStyle.Render(e.Name)
 		}
 		agent := e.Agent
 		status := formatStatus(e.Status)
@@ -141,10 +141,10 @@ func Kill(id string) error {
 }
 
 // Clean removes stale agent entries
-func Clean() error {
+func Clean() (int, error) {
 	registry, err := LoadRegistry()
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	var removed int
@@ -169,25 +169,19 @@ func Clean() error {
 		removed++
 	}
 
-	if removed > 0 {
-		fmt.Printf("Removed %d stale agent(s)\n", removed)
-	} else {
-		fmt.Println("No stale agents found")
-	}
-
-	return nil
+	return removed, nil
 }
 
 func formatStatus(status Status) string {
 	switch status {
 	case StatusRunning:
-		return runningStyle.Render("⚡ running")
+		return cmdRunningStyle.Render("⚡ running")
 	case StatusIdle:
-		return idleStyle.Render("⏳ idle")
+		return cmdIdleStyle.Render("⏳ idle")
 	case StatusDone:
-		return doneStyle.Render("✓ done")
+		return cmdDoneStyle.Render("✓ done")
 	case StatusError:
-		return errorStyle.Render("✗ error")
+		return cmdErrorStyle.Render("✗ error")
 	default:
 		return string(status)
 	}
@@ -195,7 +189,7 @@ func formatStatus(status Status) string {
 
 func formatActivity(t time.Time) string {
 	if t.IsZero() {
-		return subtleStyle.Render("-")
+		return cmdSubtleStyle.Render("-")
 	}
 
 	d := time.Since(t)

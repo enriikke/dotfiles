@@ -100,7 +100,16 @@ var cleanCmd = &cobra.Command{
 	Short: "Remove stale agent entries",
 	Long:  `Remove entries for agents that are no longer running.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return agent.Clean()
+		removed, err := agent.Clean()
+		if err != nil {
+			return err
+		}
+		if removed > 0 {
+			fmt.Printf("Removed %d stale agent(s)\n", removed)
+		} else {
+			fmt.Println("No stale agents found")
+		}
+		return nil
 	},
 }
 
