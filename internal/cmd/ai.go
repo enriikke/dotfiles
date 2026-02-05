@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/huh"
 	"github.com/enriikke/dotfiles/internal/agents"
+	"github.com/enriikke/dotfiles/internal/config"
 	"github.com/enriikke/dotfiles/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -193,30 +194,15 @@ func printAISummary(results []agents.InstallResult, dryRun bool) {
 func buildAndInstallAgentCLI() error {
 	ui.PrintHeader("Installing Agent CLI")
 
-	// Get the dotfiles repo root (where we're running from)
-	execPath, err := os.Executable()
+	// Find the dotfiles repo root using the same logic as other commands
+	repoRoot, err := findDotfilesRepo()
 	if err != nil {
-		return fmt.Errorf("cannot determine executable path: %w", err)
+		return fmt.Errorf("cannot find dotfiles repo with cmd/agent source: %w", err)
 	}
 
-	// The dotfiles binary is at the repo root, agent source is in cmd/agent
-	// We need to find the repo root by checking common locations
-	var repoRoot string
-	candidates := []string{
-		filepath.Dir(execPath),                                             // Same dir as dotfiles binary
-		filepath.Join(os.Getenv("HOME"), "Projects/ongoing/enriikke/dotfiles"), // Your common path
-		filepath.Join(os.Getenv("HOME"), ".dotfiles"),                      // Common dotfiles location
-	}
-
-	for _, candidate := range candidates {
-		if _, err := os.Stat(filepath.Join(candidate, "cmd/agent/main.go")); err == nil {
-			repoRoot = candidate
-			break
-		}
-	}
-
-	if repoRoot == "" {
-		return fmt.Errorf("cannot find dotfiles repo with cmd/agent source")
+	// Verify cmd/agent exists
+	if _, err := os.Stat(filepath.Join(repoRoot, "cmd/agent/main.go")); err != nil {
+		return fmt.Errorf("cmd/agent/main.go not found in %s", repoRoot)
 	}
 
 	// Ensure ~/.local/bin exists
@@ -243,4 +229,56 @@ func buildAndInstallAgentCLI() error {
 	ui.PrintInfo("Run 'agent dashboard' to see all running agents")
 
 	return nil
+}
+
+// findDotfilesRepo finds the dotfiles repository root
+// Priority: cwd, then executable dir, then default repo_paths
+func findDotfilesRepo() (string, error) {
+	// Check cwd first
+	cwd, err := os.Getwd()
+	if err == nil && isAgentSourceRepo(cwd) {
+		return cwd, nil
+	}
+
+	// Check executable directory
+	execPath, err := os.Executable()
+	if err == nil {
+		execDir := filepath.Dir(execPath)
+		if isAgentSourceRepo(execDir) {
+			return execDir, nil
+		}
+	}
+
+	// Check default repo paths (same as config defaults)
+	defaultPaths := []string{"~/.dotfiles", "~/dotfiles"}
+
+	// Try to load config from any valid repo to get custom repo_paths
+	for _, path := range defaultPaths {
+		expanded := expandPath(path)
+		if cfg, err := config.Load(expanded); err == nil && len(cfg.RepoPaths) > 0 {
+			// Use the custom repo_paths from config
+			for _, repoPath := range cfg.RepoPaths {
+				expandedRepo := expandPath(repoPath)
+				if isAgentSourceRepo(expandedRepo) {
+					return expandedRepo, nil
+				}
+			}
+		}
+	}
+
+	// Fall back to checking default paths directly
+	for _, path := range defaultPaths {
+		expanded := expandPath(path)
+		if isAgentSourceRepo(expanded) {
+			return expanded, nil
+		}
+	}
+
+	return "", fmt.Errorf("no valid dotfiles repo found")
+}
+
+// isAgentSourceRepo checks if the path contains cmd/agent source
+func isAgentSourceRepo(path string) bool {
+	_, err := os.Stat(filepath.Join(path, "cmd/agent/main.go"))
+	return err == nil
 }
