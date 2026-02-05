@@ -39,11 +39,30 @@ dotfiles version        # Print version
 - **Copilot** - GitHub's CLI coding agent
 - **Gemini** - Google's CLI coding agent
 
+### Agent Wrapper CLI
+
+`dotfiles ai` also installs the `agent` CLI to `~/.local/bin`, which helps you run and monitor AI agents across multiple projects:
+
+```bash
+agent run copilot              # Wrap copilot with activity tracking
+agent run claude               # Works with any CLI agent
+agent run docker sandbox run copilot  # Track agents in Docker sandboxes
+agent dashboard                # Interactive TUI showing all agents
+agent ls                       # Quick list of running agents
+agent logs <id>                # View agent logs
+```
+
+The agent wrapper provides:
+- **Activity tracking** - Know if agents are running or idle (no output for 60s+)
+- **Central dashboard** - See all agents across all projects in one view
+- **Log capture** - All agent output is logged to `~/.agent/logs/`
+
 ## Structure
 
 ```
 dotfiles/
 ├── cmd/dotfiles/       # CLI entry point
+├── cmd/agent/          # Agent wrapper CLI
 ├── internal/           # Go packages
 ├── home/               # Dotfiles (symlinked to $HOME)
 │   ├── .zshrc
