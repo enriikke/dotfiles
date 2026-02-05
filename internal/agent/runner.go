@@ -255,12 +255,26 @@ func scoreLineQuality(line string) int {
 		"type @", "mention files", "ctrl+c", "remaining requests",
 		"total usage", "api time", "session time", "code changes",
 		"breakdown by", "resume this session", "premium request",
-		"shift+tab", "cycle mode",
+		"shift+tab", "cycle mode", "for commands",
 	}
 	for _, pattern := range chromePatterns {
 		if strings.Contains(lowerLine, pattern) {
 			return 0 // Skip UI chrome entirely
 		}
+	}
+
+	// Skip lines that look like shell prompts or paths
+	// e.g., "~/Projects/foo/bar[⌃ main]" or "/Users/name/project"
+	if strings.HasPrefix(line, "~/") || strings.HasPrefix(line, "/Users/") || strings.HasPrefix(line, "/home/") {
+		return 0
+	}
+	// Skip lines with git branch indicators (common in prompts)
+	if strings.Contains(line, "[⌃") || strings.Contains(line, "[ ") || strings.Contains(line, "[main]") || strings.Contains(line, "[master]") {
+		return 0
+	}
+	// Skip lines that are mostly a path
+	if strings.Count(line, "/") >= 3 && len(line) < 80 {
+		return 0
 	}
 
 	// Boost conversational content
