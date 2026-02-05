@@ -45,7 +45,7 @@ func List() error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, cmdHeaderStyle.Render("ID\tPROJECT\tAGENT\tSTATUS\tLAST ACTIVITY"))
+	_, _ = fmt.Fprintln(w, cmdHeaderStyle.Render("ID\tPROJECT\tAGENT\tSTATUS\tLAST ACTIVITY"))
 
 	for _, e := range agents {
 		id := cmdIDStyle.Render(e.ID[:8])
@@ -57,10 +57,10 @@ func List() error {
 		status := formatStatus(e.Status)
 		activity := formatActivity(e.LastOutputAt)
 
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", id, project, agent, status, activity)
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", id, project, agent, status, activity)
 	}
 
-	w.Flush()
+	_ = w.Flush()
 	return nil
 }
 
@@ -89,7 +89,7 @@ func Logs(id string, lines int, follow bool) error {
 	if err != nil {
 		return fmt.Errorf("failed to open log file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Simple approach: read all lines and show last N
 	var allLines []string
@@ -165,7 +165,7 @@ func Clean() (int, error) {
 	}
 
 	for _, id := range toRemove {
-		registry.Remove(id)
+		_ = registry.Remove(id)
 		removed++
 	}
 

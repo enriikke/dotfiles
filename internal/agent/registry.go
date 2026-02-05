@@ -106,7 +106,7 @@ func (r *Registry) Save() error {
 		return fmt.Errorf("failed to write registry: %w", err)
 	}
 	if err := os.Rename(tmpPath, r.path); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("failed to rename registry: %w", err)
 	}
 

@@ -25,13 +25,12 @@ var (
 	purple     = lipgloss.Color("#7C3AED")
 	green      = lipgloss.Color("#10B981")
 	yellow     = lipgloss.Color("#F59E0B")
-	red        = lipgloss.Color("#EF4444")
-	gray       = lipgloss.Color("#6B7280")
-	darkGray   = lipgloss.Color("#374151")
-	white      = lipgloss.Color("#FFFFFF")
-	lightGray  = lipgloss.Color("#9CA3AF")
-	cyan       = lipgloss.Color("#06B6D4")
-	background = lipgloss.Color("#1F2937")
+	red       = lipgloss.Color("#EF4444")
+	gray      = lipgloss.Color("#6B7280")
+	darkGray  = lipgloss.Color("#374151")
+	white     = lipgloss.Color("#FFFFFF")
+	lightGray = lipgloss.Color("#9CA3AF")
+	cyan      = lipgloss.Color("#06B6D4")
 )
 
 // Styles
@@ -258,7 +257,7 @@ func (m *dashboardModel) readLogTail(path string, lines int) string {
 	if err != nil {
 		return fmt.Sprintf("Could not open log: %v", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var allLines []string
 	scanner := bufio.NewScanner(file)
@@ -306,7 +305,7 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			} else if m.showLogs {
-				m.logViewport.LineUp(3)
+				m.logViewport.ScrollUp(3)
 			}
 
 		case key.Matches(msg, dashboardKeys.Down):
@@ -318,17 +317,17 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			} else if m.showLogs {
-				m.logViewport.LineDown(3)
+				m.logViewport.ScrollDown(3)
 			}
 
 		case key.Matches(msg, dashboardKeys.PageUp):
 			if m.showLogs && m.focusedPanel == panelDetail {
-				m.logViewport.HalfViewUp()
+				m.logViewport.HalfPageUp()
 			}
 
 		case key.Matches(msg, dashboardKeys.PageDown):
 			if m.showLogs && m.focusedPanel == panelDetail {
-				m.logViewport.HalfViewDown()
+				m.logViewport.HalfPageDown()
 			}
 
 		case key.Matches(msg, dashboardKeys.Tab):

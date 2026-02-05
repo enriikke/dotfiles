@@ -41,7 +41,7 @@ func Run(args []string, name string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create log file: %w", err)
 	}
-	defer logFile.Close()
+	defer func() { _ = logFile.Close() }()
 
 	// Create command
 	cmd := exec.Command(args[0], args[1:]...)
@@ -53,16 +53,14 @@ func Run(args []string, name string) error {
 	if err != nil {
 		return fmt.Errorf("failed to start pty: %w", err)
 	}
-	defer ptmx.Close()
+	defer func() { _ = ptmx.Close() }()
 
 	// Handle terminal resize
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGWINCH)
 	go func() {
 		for range ch {
-			if err := pty.InheritSize(os.Stdin, ptmx); err != nil {
-				// Ignore resize errors
-			}
+			_ = pty.InheritSize(os.Stdin, ptmx)
 		}
 	}()
 	ch <- syscall.SIGWINCH // Initial resize
@@ -72,7 +70,9 @@ func Run(args []string, name string) error {
 	if err != nil {
 		return fmt.Errorf("failed to set raw mode: %w", err)
 	}
-	defer term.Restore(int(os.Stdin.Fd()), oldState)
+	defer func() {
+		_ = term.Restore(int(os.Stdin.Fd()), oldState)
+	}()
 
 	// Register agent
 	registry, err := LoadRegistry()
@@ -102,7 +102,7 @@ func Run(args []string, name string) error {
 	defer func() {
 		reg, _ := LoadRegistry()
 		if reg != nil {
-			reg.Remove(id)
+			_ = reg.Remove(id)
 		}
 	}()
 
@@ -116,7 +116,7 @@ func Run(args []string, name string) error {
 
 	// Copy stdin to pty
 	go func() {
-		io.Copy(ptmx, os.Stdin)
+		_, _ = io.Copy(ptmx, os.Stdin)
 	}()
 
 	// Copy pty output to stdout and track activity
@@ -125,19 +125,17 @@ func Run(args []string, name string) error {
 	for {
 		n, err := ptmx.Read(buf)
 		if err != nil {
-			if err != io.EOF {
-				// Ignore read errors on exit
-			}
+			// Break on any error (EOF or otherwise)
 			break
 		}
 		if n > 0 {
 			chunk := buf[:n]
 
-			// Write to stdout
-			os.Stdout.Write(chunk)
+			// Write to stdout (ignore errors - terminal may be gone)
+			_, _ = os.Stdout.Write(chunk)
 
-			// Write to log file
-			logFile.Write(chunk)
+			// Write to log file (ignore errors - best effort)
+			_, _ = logFile.Write(chunk)
 
 			// Track activity
 			tracker.recordOutput(chunk)
@@ -159,7 +157,7 @@ func Run(args []string, name string) error {
 
 	reg, _ := LoadRegistry()
 	if reg != nil {
-		reg.Update(id, func(e *Entry) {
+		_ = reg.Update(id, func(e *Entry) {
 			e.Status = status
 			e.ExitCode = &exitCode
 		})
@@ -337,7 +335,7 @@ func (t *outputTracker) updateRegistry() {
 		return
 	}
 
-	registry.Update(t.id, func(e *Entry) {
+	_ = registry.Update(t.id, func(e *Entry) {
 		e.Status = status
 		e.LastOutputAt = lastOutput
 		if lastLine != "" {
