@@ -31,6 +31,7 @@ func (b *BrewInstaller) Install() error {
 	}
 
 	cmd := exec.Command("/bin/bash", "-c", `$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)`)
+	cmd.Env = append(os.Environ(), "NONINTERACTIVE=1")
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
