@@ -133,6 +133,7 @@ func installPackages(plat platform.Info, repoPath string) error {
 	ui.PrintInfo("Using Homebrew for package management")
 
 	installer := packages.NewBrewInstaller(dryRunFlag)
+	defer installer.StopSudo()
 
 	if !installer.IsInstalled() {
 		ui.PrintStep("Installing Homebrew...")

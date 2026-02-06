@@ -6,14 +6,59 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sync"
+	"time"
 )
 
 type BrewInstaller struct {
-	DryRun bool
+	DryRun       bool
+	sudoOnce     sync.Once
+	sudoStopChan chan struct{}
 }
 
 func NewBrewInstaller(dryRun bool) *BrewInstaller {
 	return &BrewInstaller{DryRun: dryRun}
+}
+
+// EnsureSudo authenticates sudo once and keeps the session alive in the
+// background so that cask installs don't repeatedly prompt for a password.
+func (b *BrewInstaller) EnsureSudo() error {
+	var err error
+	b.sudoOnce.Do(func() {
+		if b.DryRun {
+			return
+		}
+		sudo := exec.Command("sudo", "-v")
+		sudo.Stdin = os.Stdin
+		sudo.Stdout = os.Stdout
+		sudo.Stderr = os.Stderr
+		if e := sudo.Run(); e != nil {
+			err = fmt.Errorf("sudo authentication required: %w", e)
+			return
+		}
+		// Refresh sudo every 30s to keep it alive during long installs
+		b.sudoStopChan = make(chan struct{})
+		go func() {
+			ticker := time.NewTicker(30 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					exec.Command("sudo", "-v").Run()
+				case <-b.sudoStopChan:
+					return
+				}
+			}
+		}()
+	})
+	return err
+}
+
+// StopSudo stops the background sudo keepalive.
+func (b *BrewInstaller) StopSudo() {
+	if b.sudoStopChan != nil {
+		close(b.sudoStopChan)
+	}
 }
 
 func (b *BrewInstaller) IsInstalled() bool {
@@ -30,16 +75,8 @@ func (b *BrewInstaller) Install() error {
 		return nil
 	}
 
-	// Pre-authenticate sudo so Homebrew's installer finds an active session.
-	// This lets us run in NONINTERACTIVE mode (skipping "Press RETURN") while
-	// still satisfying the sudo requirement. In environments with passwordless
-	// sudo (e.g. Codespaces), this succeeds silently.
-	sudo := exec.Command("sudo", "-v")
-	sudo.Stdin = os.Stdin
-	sudo.Stdout = os.Stdout
-	sudo.Stderr = os.Stderr
-	if err := sudo.Run(); err != nil {
-		return fmt.Errorf("sudo authentication required for Homebrew: %w", err)
+	if err := b.EnsureSudo(); err != nil {
+		return err
 	}
 
 	cmd := exec.Command("/bin/bash", "-c", `curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | /bin/bash`)
@@ -92,6 +129,10 @@ func (b *BrewInstaller) InstallPackages(brewfilePath string) error {
 		if err := b.Install(); err != nil {
 			return err
 		}
+	}
+
+	if err := b.EnsureSudo(); err != nil {
+		return err
 	}
 
 	cmd := exec.Command("brew", "bundle", "--file="+brewfilePath)
