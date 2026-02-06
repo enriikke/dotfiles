@@ -13,7 +13,9 @@ var rootCmd = &cobra.Command{
 It handles package installation, dotfile symlinking, and shell configuration
 across macOS, Linux, and GitHub Codespaces.`,
 	PersistentPostRun: func(cmd *cobra.Command, args []string) {
-		CheckForUpdate()
+		if cmd.Name() != "update" {
+			CheckForUpdate()
+		}
 	},
 }
 
