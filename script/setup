@@ -85,6 +85,19 @@ find_repo() {
   return 1
 }
 
+get_clone_path() {
+  local yaml path
+  yaml=$(curl -fsSL "https://raw.githubusercontent.com/enriikke/dotfiles/main/dotfiles.yaml" 2>/dev/null)
+  if [[ -n "$yaml" ]]; then
+    path=$(echo "$yaml" | grep -A1 'repo_paths:' | tail -1 | sed 's/.*- *//' | xargs)
+    if [[ -n "$path" ]]; then
+      echo "${path/#\~/$HOME}"
+      return 0
+    fi
+  fi
+  echo "$HOME/.dotfiles"
+}
+
 main() {
   info "🚀 dotfiles bootstrap"
   echo
@@ -127,9 +140,11 @@ main() {
   echo
 
   if ! repo_path=$(find_repo); then
-    info "Cloning dotfiles repository..."
-    git clone https://github.com/enriikke/dotfiles.git "$HOME/.dotfiles"
-    repo_path="$HOME/.dotfiles"
+    local clone_path
+    clone_path=$(get_clone_path)
+    info "Cloning dotfiles repository to $clone_path..."
+    git clone https://github.com/enriikke/dotfiles.git "$clone_path"
+    repo_path="$clone_path"
   fi
 
   dotfiles init --repo="$repo_path"
