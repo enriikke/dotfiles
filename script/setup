@@ -126,11 +126,13 @@ main() {
   info "Running dotfiles init..."
   echo
 
-  if repo_path=$(find_repo); then
-    dotfiles init --repo="$repo_path"
-  else
-    dotfiles init
+  if ! repo_path=$(find_repo); then
+    info "Cloning dotfiles repository..."
+    git clone https://github.com/enriikke/dotfiles.git "$HOME/.dotfiles"
+    repo_path="$HOME/.dotfiles"
   fi
+
+  dotfiles init --repo="$repo_path"
 }
 
 main "$@"
