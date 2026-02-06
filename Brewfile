@@ -24,6 +24,9 @@ brew "fnm"
 brew "rbenv"
 brew "go"
 
+# AI / LLMs
+brew "ollama"
+
 # Shell scripting tools
 brew "shellcheck"
 brew "shfmt"
@@ -37,6 +40,13 @@ brew "curl"
 brew "wget"
 brew "gnupg"
 brew "httpie"
+
+# Containers
+brew "docker"
+brew "docker-compose"
+
+# Networking
+brew "tailscale"
 
 # Linting
 brew "ast-grep"
