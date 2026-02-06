@@ -30,15 +30,18 @@ func (b *BrewInstaller) Install() error {
 		return nil
 	}
 
-	// Pre-authenticate sudo so Homebrew's installer finds an active session.
-	// This lets us run the installer in NONINTERACTIVE mode (skipping the
-	// "Press RETURN" confirmation) while still satisfying the sudo requirement.
-	sudo := exec.Command("sudo", "-v")
-	sudo.Stdin = os.Stdin
-	sudo.Stdout = os.Stdout
-	sudo.Stderr = os.Stderr
-	if err := sudo.Run(); err != nil {
-		return fmt.Errorf("sudo authentication required for Homebrew: %w", err)
+	// On macOS, pre-authenticate sudo so Homebrew's installer finds an active
+	// session. This lets us run in NONINTERACTIVE mode (skipping "Press RETURN")
+	// while still satisfying the sudo requirement. On Linux (including
+	// Codespaces), sudo is typically passwordless or not required.
+	if runtime.GOOS == "darwin" {
+		sudo := exec.Command("sudo", "-v")
+		sudo.Stdin = os.Stdin
+		sudo.Stdout = os.Stdout
+		sudo.Stderr = os.Stderr
+		if err := sudo.Run(); err != nil {
+			return fmt.Errorf("sudo authentication required for Homebrew: %w", err)
+		}
 	}
 
 	cmd := exec.Command("/bin/bash", "-c", `curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | /bin/bash`)
