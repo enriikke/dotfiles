@@ -8,8 +8,7 @@ import (
 )
 
 type Config struct {
-	Symlinks  []string `yaml:"symlinks"`
-	RepoPaths []string `yaml:"repo_paths"`
+	Symlinks []string `yaml:"symlinks"`
 }
 
 func Load(repoPath string) (*Config, error) {
@@ -35,10 +34,6 @@ func DefaultConfig() *Config {
 			".tmux.conf",
 			".config/nvim",
 			".config/zsh",
-		},
-		RepoPaths: []string{
-			"~/.dotfiles",
-			"~/dotfiles",
 		},
 	}
 }

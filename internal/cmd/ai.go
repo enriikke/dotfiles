@@ -9,7 +9,6 @@ import (
 
 	"github.com/charmbracelet/huh"
 	"github.com/enriikke/dotfiles/internal/agents"
-	"github.com/enriikke/dotfiles/internal/config"
 	"github.com/enriikke/dotfiles/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -232,7 +231,7 @@ func buildAndInstallAgentCLI() error {
 }
 
 // findDotfilesRepo finds the dotfiles repository root
-// Priority: cwd, then executable dir, then default repo_paths
+// Priority: cwd, then executable dir, then ~/.dotfiles
 func findDotfilesRepo() (string, error) {
 	// Check cwd first
 	cwd, err := os.Getwd()
@@ -249,29 +248,10 @@ func findDotfilesRepo() (string, error) {
 		}
 	}
 
-	// Check default repo paths (same as config defaults)
-	defaultPaths := []string{"~/.dotfiles", "~/dotfiles"}
-
-	// Try to load config from any valid repo to get custom repo_paths
-	for _, path := range defaultPaths {
-		expanded := expandPath(path)
-		if cfg, err := config.Load(expanded); err == nil && len(cfg.RepoPaths) > 0 {
-			// Use the custom repo_paths from config
-			for _, repoPath := range cfg.RepoPaths {
-				expandedRepo := expandPath(repoPath)
-				if isAgentSourceRepo(expandedRepo) {
-					return expandedRepo, nil
-				}
-			}
-		}
-	}
-
-	// Fall back to checking default paths directly
-	for _, path := range defaultPaths {
-		expanded := expandPath(path)
-		if isAgentSourceRepo(expanded) {
-			return expanded, nil
-		}
+	// Check ~/.dotfiles
+	dotfiles := expandPath("~/.dotfiles")
+	if isAgentSourceRepo(dotfiles) {
+		return dotfiles, nil
 	}
 
 	return "", fmt.Errorf("no valid dotfiles repo found")

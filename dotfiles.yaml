@@ -10,8 +10,3 @@ symlinks:
   - .config/nvim
   - .config/zsh/plugins.txt
   - .config/zsh/starship.toml
-
-# Paths to check when looking for the dotfiles repo
-repo_paths:
-  - ~/.dotfiles
-  - ~/dotfiles

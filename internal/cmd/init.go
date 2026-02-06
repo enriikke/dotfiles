@@ -87,7 +87,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func findRepo(cfg *config.Config) (string, error) {
+func findRepo(_ *config.Config) (string, error) {
 	if repoFlag != "" {
 		expanded := expandPath(repoFlag)
 		if isValidRepo(expanded) {
@@ -101,19 +101,12 @@ func findRepo(cfg *config.Config) (string, error) {
 		return cwd, nil
 	}
 
-	repoPaths := []string{"~/.dotfiles", "~/dotfiles"}
-	if cfg != nil && len(cfg.RepoPaths) > 0 {
-		repoPaths = cfg.RepoPaths
+	dotfiles := expandPath("~/.dotfiles")
+	if isValidRepo(dotfiles) {
+		return dotfiles, nil
 	}
 
-	for _, path := range repoPaths {
-		expanded := expandPath(path)
-		if isValidRepo(expanded) {
-			return expanded, nil
-		}
-	}
-
-	return "", fmt.Errorf("could not find dotfiles repository. Use --repo to specify the path")
+	return "", fmt.Errorf("could not find dotfiles repository at ~/.dotfiles. Use --repo to specify the path")
 }
 
 func isValidRepo(path string) bool {
