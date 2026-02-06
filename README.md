@@ -4,9 +4,16 @@ My personal dotfiles, managed by a custom Go CLI.
 
 ## Quick Start
 
+On a fresh machine, open Terminal and run:
+
 ```bash
-git clone https://github.com/enriikke/dotfiles.git ~/.dotfiles
-cd ~/projects/dotfiles
+curl -fsSL https://raw.githubusercontent.com/enriikke/dotfiles/main/script/setup | bash
+```
+
+Or if you already have the repo cloned:
+
+```bash
+cd ~/.dotfiles
 ./script/setup
 ```
 
@@ -15,18 +22,21 @@ cd ~/projects/dotfiles
 `dotfiles init` will:
 
 1. **Detect your platform** (macOS, Linux, Codespaces, Raspberry Pi)
-2. **Install packages** (Homebrew on macOS, apt on Linux)
-3. **Symlink dotfiles** from `home/` to `$HOME`
-4. **Set zsh as default shell**
+2. **Install packages** via Homebrew (CLI tools, languages, linters)
+3. **Install apps** on macOS (Chrome, Raycast, Ghostty, Slack, etc.)
+4. **Symlink dotfiles** from `home/` to `$HOME`
+5. **Apply macOS defaults** (Dock, Finder, Keyboard, Screenshots, UX)
+6. **Set zsh as default shell**
 
 ## Commands
 
 ```bash
 dotfiles init           # Set up everything
 dotfiles init --dry-run # Preview changes
+dotfiles ssh            # Set up SSH keys from 1Password
+dotfiles macos          # Configure macOS settings (computer name)
 dotfiles ai             # Install AI coding agents (interactive)
 dotfiles ai --all       # Install all AI agents
-dotfiles ai --agent codex --agent claude  # Install specific agents
 dotfiles version        # Print version
 ```
 
@@ -66,10 +76,13 @@ dotfiles/
 ├── internal/           # Go packages
 ├── home/               # Dotfiles (symlinked to $HOME)
 │   ├── .zshrc
-│   ├── .config/
-│   └── ...
-├── Brewfile            # macOS packages
-├── packages.txt        # Linux packages
+│   ├── .gitconfig
+│   ├── .tmux.conf
+│   ├── .ssh/config
+│   └── .config/        # nvim, ghostty, zsh, starship
+├── script/setup        # Bootstrap script
+├── Brewfile            # Core CLI packages (macOS + Linux)
+├── Brewfile.macos      # macOS-only apps and fonts
 └── dotfiles.yaml       # Configuration
 ```
 
