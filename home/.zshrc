@@ -112,12 +112,8 @@ if [[ ! -f $PLUGINS_CACHE || $PLUGINS_CACHE -ot $PLUGINS_FILE ]]; then
   zcompile "$PLUGINS_CACHE" 2>/dev/null || true
 fi
 
-# Source compiled bundle if available, otherwise plain cache
-if [[ -f "$PLUGINS_CACHE.zwc" ]]; then
-  source "$PLUGINS_CACHE.zwc"
-else
-  source "$PLUGINS_CACHE"
-fi
+# Source the cached bundle (zsh uses .zwc automatically if available)
+source "$PLUGINS_CACHE"
 
 # =============================================================================
 # COMPLETION SYSTEM
