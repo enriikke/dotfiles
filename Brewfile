@@ -25,7 +25,6 @@ brew "rbenv"
 brew "go"
 
 # JavaScript runtimes
-tap "oven-sh/bun"
 brew "oven-sh/bun/bun"
 
 # AI / LLMs
