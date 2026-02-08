@@ -336,8 +336,8 @@ func createKeyAlias(keyDir, alias, target string, dryRun bool) {
 	}
 
 	// Remove existing symlinks
-	os.Remove(aliasPath)
-	os.Remove(aliasPubPath)
+	_ = os.Remove(aliasPath)
+	_ = os.Remove(aliasPubPath)
 
 	if err := os.Symlink(target, aliasPath); err != nil {
 		ui.PrintError(fmt.Sprintf("Failed to create symlink: %v", err))
