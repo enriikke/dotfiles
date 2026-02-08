@@ -124,10 +124,12 @@ func (c *Client) SecureNoteExists(title string) bool {
 	return cmd.Run() == nil
 }
 
-// cleanKeyContent removes wrapping quotes and trims whitespace.
+// cleanKeyContent removes wrapping quotes and normalizes whitespace.
+// Ensures content ends with a newline (required by OpenSSH for key files).
 func cleanKeyContent(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.TrimPrefix(s, "\"")
 	s = strings.TrimSuffix(s, "\"")
-	return s
+	s = strings.TrimSpace(s)
+	return s + "\n"
 }

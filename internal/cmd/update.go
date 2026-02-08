@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	releaseAPI   = "https://api.github.com/repos/enriikke/dotfiles/releases/latest"
-	checkFile    = ".dotfiles-update-check"
+	releaseAPI    = "https://api.github.com/repos/enriikke/dotfiles/releases/latest"
+	checkFile     = ".dotfiles-update-check"
 	checkInterval = 24 * time.Hour
 )
 

@@ -165,16 +165,24 @@ func runSSH(cmd *cobra.Command, args []string) error {
 
 	var successCount, errorCount int
 
+	type downloadedKey struct {
+		Title    string
+		Filename string
+	}
+	var downloadedKeys []downloadedKey
+
 	for _, item := range items {
 		if !selectedSet[item.Title] {
 			continue
 		}
 
 		if item.Type == "key" {
-			if err := downloadSSHKey(op, item.Title, keyDir, sshDryRun); err != nil {
+			filename, err := downloadSSHKey(op, item.Title, keyDir, sshDryRun)
+			if err != nil {
 				ui.PrintError(fmt.Sprintf("%s: %v", item.Title, err))
 				errorCount++
 			} else {
+				downloadedKeys = append(downloadedKeys, downloadedKey{Title: item.Title, Filename: filename})
 				successCount++
 			}
 		} else {
@@ -185,6 +193,43 @@ func runSSH(cmd *cobra.Command, args []string) error {
 			} else {
 				successCount++
 			}
+		}
+	}
+
+	// Set up key alias for github.com
+	if len(downloadedKeys) > 0 {
+		fmt.Println()
+		ui.PrintSection("Key Aliases")
+
+		var githubKeyFilename string
+
+		if sshAll && len(downloadedKeys) > 1 {
+			ui.PrintInfo("Run without --all to select the key alias for github.com")
+		} else if len(downloadedKeys) == 1 {
+			githubKeyFilename = downloadedKeys[0].Filename
+			ui.PrintInfo(fmt.Sprintf("Using %s for github.com", downloadedKeys[0].Title))
+		} else {
+			var options []huh.Option[string]
+			for _, k := range downloadedKeys {
+				options = append(options, huh.NewOption(k.Title, k.Filename))
+			}
+
+			form := huh.NewForm(
+				huh.NewGroup(
+					huh.NewSelect[string]().
+						Title("Which key should be used for github.com?").
+						Options(options...).
+						Value(&githubKeyFilename),
+				),
+			)
+
+			if err := form.Run(); err != nil {
+				ui.PrintWarning("Skipping key alias: " + err.Error())
+			}
+		}
+
+		if githubKeyFilename != "" {
+			createKeyAlias(keyDir, "github", githubKeyFilename, sshDryRun)
 		}
 	}
 
@@ -206,7 +251,7 @@ func runSSH(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func downloadSSHKey(op *onepassword.Client, title, keyDir string, dryRun bool) error {
+func downloadSSHKey(op *onepassword.Client, title, keyDir string, dryRun bool) (string, error) {
 	// Determine key type and filename
 	keyType := op.GetKeyType(title)
 	prefix := "id_key"
@@ -220,20 +265,21 @@ func downloadSSHKey(op *onepassword.Client, title, keyDir string, dryRun bool) e
 	safeName := sanitizeFilename(title)
 	privatePath := filepath.Join(keyDir, fmt.Sprintf("%s_%s", prefix, safeName))
 	publicPath := privatePath + ".pub"
+	baseName := filepath.Base(privatePath)
 
 	if dryRun {
-		ui.PrintSuccess(fmt.Sprintf("%s → %s", title, filepath.Base(privatePath)))
-		return nil
+		ui.PrintSuccess(fmt.Sprintf("%s → %s", title, baseName))
+		return baseName, nil
 	}
 
 	// Download private key
 	privateKey, err := op.GetPrivateKey(title)
 	if err != nil {
-		return fmt.Errorf("failed to get private key: %w", err)
+		return "", fmt.Errorf("failed to get private key: %w", err)
 	}
 
 	if err := os.WriteFile(privatePath, []byte(privateKey), 0600); err != nil {
-		return fmt.Errorf("failed to write private key: %w", err)
+		return "", fmt.Errorf("failed to write private key: %w", err)
 	}
 
 	// Download public key
@@ -243,12 +289,12 @@ func downloadSSHKey(op *onepassword.Client, title, keyDir string, dryRun bool) e
 		ui.PrintWarning(fmt.Sprintf("%s: no public key found", title))
 	} else {
 		if err := os.WriteFile(publicPath, []byte(publicKey), 0644); err != nil {
-			return fmt.Errorf("failed to write public key: %w", err)
+			return "", fmt.Errorf("failed to write public key: %w", err)
 		}
 	}
 
-	ui.PrintSuccess(fmt.Sprintf("%s → %s", title, filepath.Base(privatePath)))
-	return nil
+	ui.PrintSuccess(fmt.Sprintf("%s → %s", title, baseName))
+	return baseName, nil
 }
 
 func downloadConfig(op *onepassword.Client, title, destPath string, dryRun bool) error {
@@ -274,4 +320,37 @@ func sanitizeFilename(s string) string {
 	s = strings.ReplaceAll(s, " ", "_")
 	reg := regexp.MustCompile(`[^a-zA-Z0-9._-]`)
 	return reg.ReplaceAllString(s, "")
+}
+
+func createKeyAlias(keyDir, alias, target string, dryRun bool) {
+	aliasPath := filepath.Join(keyDir, alias)
+	aliasPubPath := aliasPath + ".pub"
+	targetPub := target + ".pub"
+
+	if dryRun {
+		ui.PrintSuccess(fmt.Sprintf("%s → %s", alias, target))
+		if _, err := os.Stat(filepath.Join(keyDir, targetPub)); err == nil {
+			ui.PrintSuccess(fmt.Sprintf("%s.pub → %s", alias, targetPub))
+		}
+		return
+	}
+
+	// Remove existing symlinks
+	os.Remove(aliasPath)
+	os.Remove(aliasPubPath)
+
+	if err := os.Symlink(target, aliasPath); err != nil {
+		ui.PrintError(fmt.Sprintf("Failed to create symlink: %v", err))
+		return
+	}
+	ui.PrintSuccess(fmt.Sprintf("%s → %s", alias, target))
+
+	// Symlink public key if it exists
+	if _, err := os.Stat(filepath.Join(keyDir, targetPub)); err == nil {
+		if err := os.Symlink(targetPub, aliasPubPath); err != nil {
+			ui.PrintError(fmt.Sprintf("Failed to create public key symlink: %v", err))
+		} else {
+			ui.PrintSuccess(fmt.Sprintf("%s.pub → %s", alias, targetPub))
+		}
+	}
 }

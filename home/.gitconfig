@@ -1,7 +1,7 @@
 [user]
   name = Enrique Gonzalez
   email = "enriikke@gmail.com"
-  signingkey = "~/.ssh/id_rsa.pub"
+  signingkey = "~/.ssh/keys/github.pub"
 [github]
   user = enriikke
 [core]

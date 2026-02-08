@@ -26,17 +26,17 @@ const IdleThreshold = 60 * time.Second
 // Entry represents a running agent in the registry
 type Entry struct {
 	ID             string    `json:"id"`
-	Agent          string    `json:"agent"`           // e.g., "copilot", "claude"
-	Name           string    `json:"name,omitempty"`  // User-provided name
-	Project        string    `json:"project"`         // Directory name
-	Cwd            string    `json:"cwd"`             // Full working directory
-	PID            int       `json:"pid"`             // Process ID
-	Sandbox        bool      `json:"sandbox"`         // Running in docker sandbox
-	Status         Status    `json:"status"`          // Current status
-	StartedAt      time.Time `json:"started_at"`      // When agent started
-	LastOutputAt   time.Time `json:"last_output_at"`  // Last output timestamp
-	LastOutputLine string    `json:"last_output_line"` // Last line of output (truncated)
-	LogFile        string    `json:"log_file"`        // Path to log file
+	Agent          string    `json:"agent"`               // e.g., "copilot", "claude"
+	Name           string    `json:"name,omitempty"`      // User-provided name
+	Project        string    `json:"project"`             // Directory name
+	Cwd            string    `json:"cwd"`                 // Full working directory
+	PID            int       `json:"pid"`                 // Process ID
+	Sandbox        bool      `json:"sandbox"`             // Running in docker sandbox
+	Status         Status    `json:"status"`              // Current status
+	StartedAt      time.Time `json:"started_at"`          // When agent started
+	LastOutputAt   time.Time `json:"last_output_at"`      // Last output timestamp
+	LastOutputLine string    `json:"last_output_line"`    // Last line of output (truncated)
+	LogFile        string    `json:"log_file"`            // Path to log file
 	ExitCode       *int      `json:"exit_code,omitempty"` // Exit code if done/error
 }
 

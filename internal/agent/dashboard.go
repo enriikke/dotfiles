@@ -22,9 +22,9 @@ func Dashboard() error {
 
 // Colors
 var (
-	purple     = lipgloss.Color("#7C3AED")
-	green      = lipgloss.Color("#10B981")
-	yellow     = lipgloss.Color("#F59E0B")
+	purple    = lipgloss.Color("#7C3AED")
+	green     = lipgloss.Color("#10B981")
+	yellow    = lipgloss.Color("#F59E0B")
 	red       = lipgloss.Color("#EF4444")
 	gray      = lipgloss.Color("#6B7280")
 	darkGray  = lipgloss.Color("#374151")
@@ -738,5 +738,3 @@ func truncatePath(path string, maxLen int) string {
 	}
 	return short
 }
-
-
