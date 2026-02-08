@@ -230,7 +230,9 @@ func configureMacOS() error {
 
 	if !dryRunFlag {
 		ui.PrintStep("Restarting affected apps (Dock, Finder)...")
-		macos.RestartAffectedApps(dryRunFlag)
+		if err := macos.RestartAffectedApps(dryRunFlag); err != nil {
+			ui.PrintWarning(fmt.Sprintf("Failed to restart apps: %v", err))
+		}
 	}
 
 	if errors > 0 {

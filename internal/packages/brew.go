@@ -44,7 +44,7 @@ func (b *BrewInstaller) EnsureSudo() error {
 			for {
 				select {
 				case <-ticker.C:
-					exec.Command("sudo", "-v").Run()
+					_ = exec.Command("sudo", "-v").Run()
 				case <-b.sudoStopChan:
 					return
 				}
@@ -116,7 +116,7 @@ func (b *BrewInstaller) initShellEnv() error {
 		return fmt.Errorf("brew not found at expected path: %s", brewPath)
 	}
 
-	os.Setenv("PATH", filepath.Dir(brewPath)+":"+os.Getenv("PATH"))
+	_ = os.Setenv("PATH", filepath.Dir(brewPath)+":"+os.Getenv("PATH"))
 	return nil
 }
 

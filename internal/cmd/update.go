@@ -92,7 +92,7 @@ func fetchLatestRelease() (*githubRelease, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GitHub API returned %d", resp.StatusCode)
@@ -123,7 +123,7 @@ func downloadAndReplace(url, destPath string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("download returned %d", resp.StatusCode)
@@ -133,7 +133,7 @@ func downloadAndReplace(url, destPath string) error {
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(tmpDir)
+	defer os.RemoveAll(tmpDir) //nolint:errcheck
 
 	tarPath := filepath.Join(tmpDir, "dotfiles.tar.gz")
 	f, err := os.Create(tarPath)
@@ -141,10 +141,10 @@ func downloadAndReplace(url, destPath string) error {
 		return err
 	}
 	if _, err := io.Copy(f, resp.Body); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
-	f.Close()
+	_ = f.Close()
 
 	// Extract tar.gz
 	extract := fmt.Sprintf("tar -xzf %s -C %s", tarPath, tmpDir)
@@ -171,13 +171,13 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer in.Close()
+	defer in.Close() //nolint:errcheck
 
 	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer out.Close() //nolint:errcheck
 
 	_, err = io.Copy(out, in)
 	return err
@@ -220,8 +220,8 @@ func CheckForUpdate() {
 			return
 		}
 		latest := strings.TrimPrefix(release.TagName, "v")
-		os.MkdirAll(filepath.Dir(cachePath), 0755)
-		os.WriteFile(cachePath, []byte(latest), 0644)
+		_ = os.MkdirAll(filepath.Dir(cachePath), 0755)
+		_ = os.WriteFile(cachePath, []byte(latest), 0644)
 	}()
 }
 
@@ -231,6 +231,6 @@ func saveLastCheck(version string) {
 		return
 	}
 	cachePath := filepath.Join(cacheDir, checkFile)
-	os.MkdirAll(filepath.Dir(cachePath), 0755)
-	os.WriteFile(cachePath, []byte(version), 0644)
+	_ = os.MkdirAll(filepath.Dir(cachePath), 0755)
+	_ = os.WriteFile(cachePath, []byte(version), 0644)
 }
