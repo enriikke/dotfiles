@@ -58,6 +58,26 @@ func Apply(d Default, dryRun bool) error {
 	return exec.Command("defaults", "write", d.Domain, d.Key, d.Type, d.Value).Run()
 }
 
+// DisableSpotlightShortcuts disables Spotlight hotkeys so other launchers can use them.
+func DisableSpotlightShortcuts(dryRun bool) error {
+	if dryRun {
+		return nil
+	}
+
+	commands := [][]string{
+		{"write", "com.apple.symbolichotkeys", "AppleSymbolicHotKeys", "-dict-add", "64", "{enabled = 0;}"},
+		{"write", "com.apple.symbolichotkeys", "AppleSymbolicHotKeys", "-dict-add", "65", "{enabled = 0;}"},
+	}
+
+	for _, args := range commands {
+		if err := exec.Command("defaults", args...).Run(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // RestartAffectedApps restarts Dock and Finder so changes take effect.
 func RestartAffectedApps(dryRun bool) error {
 	if dryRun {
