@@ -228,6 +228,17 @@ func configureMacOS() error {
 		}
 	}
 
+	if err := macos.DisableSpotlightShortcuts(dryRunFlag); err != nil {
+		ui.PrintError(fmt.Sprintf("Disable Spotlight keyboard shortcuts: %v", err))
+		errors++
+	} else {
+		action := "set"
+		if dryRunFlag {
+			action = "would set"
+		}
+		ui.PrintSuccess(fmt.Sprintf("Disable Spotlight keyboard shortcuts for Raycast %s", ui.SubtleStyle.Render("("+action+")")))
+	}
+
 	if !dryRunFlag {
 		ui.PrintStep("Restarting affected apps (Dock, Finder)...")
 		if err := macos.RestartAffectedApps(dryRunFlag); err != nil {
