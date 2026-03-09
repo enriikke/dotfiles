@@ -62,6 +62,10 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 # maestro
 export PATH=$PATH:$HOME/.maestro/bin
 
+# android
+export ANDROID_HOME="$HOME/Library/Android/sdk";
+export PATH="$PATH:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator"
+
 # Other env vars
 export SHELL=$(which zsh)
 export VISUAL="nvim"

@@ -26,7 +26,7 @@ var initCmd = &cobra.Command{
   1. Installing packages via Homebrew
   2. Symlinking dotfiles to your home directory
   3. Configuring macOS system settings (macOS only)
-  4. Setting zsh as your default shell`,
+  4. Setting zsh as your default shell (except in GitHub Codespaces)`,
 	RunE: runInit,
 }
 
@@ -79,7 +79,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	ui.PrintHeader("Shell Configuration")
-	if err := configureShell(); err != nil {
+	if err := configureShell(plat); err != nil {
 		ui.PrintWarning(fmt.Sprintf("Could not set default shell: %v", err))
 	}
 
@@ -252,7 +252,12 @@ func configureMacOS() error {
 	return nil
 }
 
-func configureShell() error {
+func configureShell(plat platform.Info) error {
+	if plat.IsCodespaces {
+		ui.PrintInfo("Skipping default shell change in GitHub Codespaces")
+		return nil
+	}
+
 	if packages.IsZshDefault() {
 		ui.PrintSuccess("zsh is already the default shell")
 		return nil
