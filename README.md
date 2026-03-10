@@ -26,7 +26,7 @@ cd ~/.dotfiles
 3. **Install apps** on macOS (Chrome, Raycast, Ghostty, Slack, etc.)
 4. **Symlink dotfiles** from `home/` to `$HOME`
 5. **Apply macOS defaults** (Dock, Finder, Keyboard, Screenshots, UX)
-6. **Set zsh as default shell**
+6. **Set zsh as default shell** (skipped in GitHub Codespaces)
 
 ## Commands
 
