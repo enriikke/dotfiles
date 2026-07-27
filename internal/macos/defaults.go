@@ -31,7 +31,6 @@ func AllDefaults() []Default {
 		{Domain: "com.apple.finder", Key: "FXPreferredViewStyle", Type: "-string", Value: "clmv", Desc: "Use column view by default"},
 
 		// Keyboard
-		{Domain: "NSGlobalDomain", Key: "ApplePressAndHoldEnabled", Type: "-bool", Value: "false", Desc: "Disable press-and-hold, enable key repeat"},
 		{Domain: "NSGlobalDomain", Key: "KeyRepeat", Type: "-int", Value: "2", Desc: "Fast key repeat rate"},
 		{Domain: "NSGlobalDomain", Key: "InitialKeyRepeat", Type: "-int", Value: "15", Desc: "Short delay until key repeat"},
 		{Domain: "NSGlobalDomain", Key: "NSAutomaticSpellingCorrectionEnabled", Type: "-bool", Value: "false", Desc: "Disable auto-correct"},
