@@ -7,6 +7,7 @@ symlinks:
   - .tmux.conf
   - .ssh/config
   - .config/ghostty
+  - .config/herdr/config.toml
   - .config/nvim
   - .config/zsh/plugins.txt
   - .config/zsh/starship.toml
