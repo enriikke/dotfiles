@@ -33,12 +33,16 @@ cd ~/.dotfiles
 ```bash
 dotfiles init           # Set up everything
 dotfiles init --dry-run # Preview changes
-dotfiles ssh            # Set up SSH keys from 1Password
+dotfiles ssh            # Set up encrypted SSH keys from 1Password
 dotfiles macos          # Configure macOS settings (computer name)
 dotfiles ai             # Install AI coding agents (interactive)
 dotfiles ai --all       # Install all AI agents
 dotfiles version        # Print version
 ```
+
+`dotfiles ssh` expects each 1Password SSH Key item to include a `password`
+field. That value is used to encrypt the private key before it is written to
+`~/.ssh/keys/`.
 
 ## AI Agents
 

@@ -52,6 +52,9 @@ fi
 # local bin
 export PATH="$HOME/.local/bin:$PATH"
 
+# ps-toolbox
+export PATH="$HOME/.ps-toolbox/bin:$PATH"
+
 # go
 export PATH=$PATH:$(go env GOPATH)/bin
 
@@ -263,9 +266,9 @@ function git_current_branch() {
 alias sudo='sudo '
 
 # Better defaults with modern replacements
-alias ls='eza --long --header --git --classify --color'
-alias la='eza --all --long --header --git --classify --color'
-alias lt='eza --tree --level=2 --long --header --git --classify --color'
+alias ls='eza --long --header --git --classify --color=auto'
+alias la='eza --all --long --header --git --classify --color=auto'
+alias lt='eza --tree --level=2 --long --header --git --classify --color=auto'
 alias grep='rg --color=auto'
 alias cat='bat --paging=never'
 
@@ -319,6 +322,9 @@ eval "$(rbenv init - --no-rehash zsh)"
 # fnm
 eval "$(fnm env --use-on-cd --shell zsh)"
 
+# direnv
+eval "$(direnv hook zsh)"
+
 # bun completions
 if [ -s "$BUN_INSTALL/_bun" ]; then
   source "$BUN_INSTALL/_bun"
@@ -335,3 +341,4 @@ if [ -f "$HOME/google-cloud-sdk/path.zsh.inc" ]; then . "$HOME/google-cloud-sdk/
 
 # The next line enables shell command completion for gcloud.
 if [ -f "$HOME/google-cloud-sdk/completion.zsh.inc" ]; then . "$HOME/google-cloud-sdk/completion.zsh.inc"; fi
+export PATH="/opt/homebrew/opt/mysql@8.4/bin:$PATH"

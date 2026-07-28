@@ -66,6 +66,22 @@ func (c *Client) GetPrivateKey(title string) (string, error) {
 	return cleanKeyContent(string(out)), nil
 }
 
+// GetPassword retrieves the password field for an item.
+func (c *Client) GetPassword(title string) (string, error) {
+	cmd := exec.Command("op", "item", "get", title, "--field", "password", "--reveal")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get password for %q: %w", title, err)
+	}
+
+	password := cleanSecretContent(string(out))
+	if password == "" {
+		return "", fmt.Errorf("password field for %q is empty", title)
+	}
+
+	return password, nil
+}
+
 // GetPublicKey retrieves the public key content for an SSH key.
 func (c *Client) GetPublicKey(title string) (string, error) {
 	cmd := exec.Command("op", "item", "get", title, "--field", "public key")
@@ -132,4 +148,11 @@ func cleanKeyContent(s string) string {
 	s = strings.TrimSuffix(s, "\"")
 	s = strings.TrimSpace(s)
 	return s + "\n"
+}
+
+func cleanSecretContent(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "\"")
+	s = strings.TrimSuffix(s, "\"")
+	return strings.TrimSpace(s)
 }
