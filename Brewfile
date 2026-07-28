@@ -25,7 +25,7 @@ brew "rbenv"
 brew "go"
 
 # JavaScript runtimes
-brew "oven-sh/bun/bun"
+# brew "oven-sh/bun/bun"
 
 # AI / LLMs
 brew "ollama"
@@ -49,7 +49,7 @@ brew "docker"
 brew "docker-compose"
 
 # Networking
-brew "tailscale"
+# brew "tailscale"
 
 # Linting
 brew "ast-grep"

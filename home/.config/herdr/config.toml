@@ -1,0 +1,18 @@
+[keys]
+prefix = "ctrl+a"
+
+# Match tmux splits: prefix+- stacks panes, prefix+| splits side-by-side.
+split_horizontal = "prefix+minus"
+split_vertical = "prefix+|"
+
+# Match tmux pane navigation with prefix+h/j/k/l.
+focus_pane_left = "prefix+h"
+focus_pane_down = "prefix+j"
+focus_pane_up = "prefix+k"
+focus_pane_right = "prefix+l"
+
+# Keep Herdr's navigate mode vim-friendly too.
+navigate_pane_left = "h"
+navigate_pane_down = "j"
+navigate_pane_up = "k"
+navigate_pane_right = "l"
