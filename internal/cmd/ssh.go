@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/pem"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"github.com/enriikke/dotfiles/internal/onepassword"
 	"github.com/enriikke/dotfiles/internal/ui"
 	"github.com/spf13/cobra"
+	"golang.org/x/crypto/ssh"
 )
 
 var (
@@ -26,7 +28,7 @@ func init() {
 var sshCmd = &cobra.Command{
 	Use:   "ssh",
 	Short: "Set up SSH keys from 1Password",
-	Long:  `Download SSH keys and config files from 1Password to ~/.ssh/`,
+	Long:  `Download SSH keys and config files from 1Password to ~/.ssh/ and encrypt private keys with their 1Password password field.`,
 	RunE:  runSSH,
 }
 
@@ -268,7 +270,7 @@ func downloadSSHKey(op *onepassword.Client, title, keyDir string, dryRun bool) (
 	baseName := filepath.Base(privatePath)
 
 	if dryRun {
-		ui.PrintSuccess(fmt.Sprintf("%s → %s", title, baseName))
+		ui.PrintSuccess(fmt.Sprintf("%s → %s (encrypted)", title, baseName))
 		return baseName, nil
 	}
 
@@ -278,7 +280,17 @@ func downloadSSHKey(op *onepassword.Client, title, keyDir string, dryRun bool) (
 		return "", fmt.Errorf("failed to get private key: %w", err)
 	}
 
-	if err := os.WriteFile(privatePath, []byte(privateKey), 0600); err != nil {
+	password, err := op.GetPassword(title)
+	if err != nil {
+		return "", fmt.Errorf("failed to get password: %w", err)
+	}
+
+	encryptedPrivateKey, err := encryptPrivateKey(privateKey, password, title)
+	if err != nil {
+		return "", err
+	}
+
+	if err := os.WriteFile(privatePath, []byte(encryptedPrivateKey), 0600); err != nil {
 		return "", fmt.Errorf("failed to write private key: %w", err)
 	}
 
@@ -293,8 +305,29 @@ func downloadSSHKey(op *onepassword.Client, title, keyDir string, dryRun bool) (
 		}
 	}
 
-	ui.PrintSuccess(fmt.Sprintf("%s → %s", title, baseName))
+	ui.PrintSuccess(fmt.Sprintf("%s → %s (encrypted)", title, baseName))
 	return baseName, nil
+}
+
+func encryptPrivateKey(privateKey, password, comment string) (string, error) {
+	if strings.TrimSpace(password) == "" {
+		return "", fmt.Errorf("password field is empty")
+	}
+
+	parsedKey, err := ssh.ParseRawPrivateKey([]byte(privateKey))
+	if err != nil {
+		parsedKey, err = ssh.ParseRawPrivateKeyWithPassphrase([]byte(privateKey), []byte(password))
+		if err != nil {
+			return "", fmt.Errorf("failed to parse private key with 1Password password: %w", err)
+		}
+	}
+
+	block, err := ssh.MarshalPrivateKeyWithPassphrase(parsedKey, comment, []byte(password))
+	if err != nil {
+		return "", fmt.Errorf("failed to encrypt private key: %w", err)
+	}
+
+	return string(pem.EncodeToMemory(block)), nil
 }
 
 func downloadConfig(op *onepassword.Client, title, destPath string, dryRun bool) error {
